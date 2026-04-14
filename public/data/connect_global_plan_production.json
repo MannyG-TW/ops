@@ -1,0 +1,3958 @@
+{
+  "export_type": "connect_pricing",
+  "plan_type": "global",
+  "plan_id": "ee88e811",
+  "version": 9,
+  "currency": "USD",
+  "exported_at": "2026-03-27T21:34:43.743437",
+  "source_updated_at": "2026-03-19T13:54:58.241413",
+  "source": {
+    "vendor_id": "99225864-c4d3-4134-8ad5-420772e67d7c",
+    "vendor_name": "TelliSIM",
+    "vendor_code": "TEL",
+    "sheet_id": "80f1031d-5059-4851-945d-d42c3b263c5f",
+    "sheet_tag": "TEL-MAR26",
+    "sheet_version": "March 2026",
+    "sheet_file": null,
+    "sheet_checksum": "sha256:1a4eae60897f2b42",
+    "products_covered": [
+      "esim"
+    ],
+    "valid_from": "2026-03-10T00:00:00",
+    "valid_to": null,
+    "valid_indefinitely": true,
+    "imported_at": "2026-03-09T23:42:00.366081"
+  },
+  "season_schedule": {
+    "peak": {
+      "months": [
+        5,
+        6,
+        7,
+        8
+      ],
+      "multiplier": 1.25
+    },
+    "high": {
+      "months": [
+        4,
+        9,
+        10
+      ],
+      "multiplier": 1.1
+    },
+    "shoulder": {
+      "months": [
+        3,
+        11
+      ],
+      "multiplier": 1.0
+    },
+    "low": {
+      "months": [
+        1,
+        2,
+        12
+      ],
+      "multiplier": 0.9
+    }
+  },
+  "tiers": [
+    {
+      "tier_name": "Global Lite",
+      "tier_type": "lite",
+      "country_count": 35,
+      "countries": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME"
+      ],
+      "monitored": true,
+      "tracking_id": "TRK_36BA596C",
+      "packages": [
+        {
+          "sku": "GLOBAL_LITE_1GB_7D",
+          "data_gb": 1,
+          "validity_days": 7,
+          "price_usd": 1.49
+        },
+        {
+          "sku": "GLOBAL_LITE_3GB_7D",
+          "data_gb": 3,
+          "validity_days": 7,
+          "price_usd": 2.49
+        },
+        {
+          "sku": "GLOBAL_LITE_5GB_15D",
+          "data_gb": 5,
+          "validity_days": 15,
+          "price_usd": 2.49
+        },
+        {
+          "sku": "GLOBAL_LITE_10GB_15D",
+          "data_gb": 10,
+          "validity_days": 15,
+          "price_usd": 5.49
+        },
+        {
+          "sku": "GLOBAL_LITE_20GB_30D",
+          "data_gb": 20,
+          "validity_days": 30,
+          "price_usd": 7.49
+        }
+      ]
+    },
+    {
+      "tier_name": "Global Standard",
+      "tier_type": "standard",
+      "country_count": 85,
+      "countries": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM"
+      ],
+      "monitored": true,
+      "tracking_id": "TRK_3AAAB81E",
+      "packages": [
+        {
+          "sku": "GLOBAL_STANDARD_1GB_7D",
+          "data_gb": 1,
+          "validity_days": 7,
+          "price_usd": 1.49
+        },
+        {
+          "sku": "GLOBAL_STANDARD_3GB_7D",
+          "data_gb": 3,
+          "validity_days": 7,
+          "price_usd": 4.49
+        },
+        {
+          "sku": "GLOBAL_STANDARD_5GB_15D",
+          "data_gb": 5,
+          "validity_days": 15,
+          "price_usd": 5.49
+        },
+        {
+          "sku": "GLOBAL_STANDARD_10GB_15D",
+          "data_gb": 10,
+          "validity_days": 15,
+          "price_usd": 11.49
+        },
+        {
+          "sku": "GLOBAL_STANDARD_20GB_30D",
+          "data_gb": 20,
+          "validity_days": 30,
+          "price_usd": 15.49
+        }
+      ]
+    },
+    {
+      "tier_name": "Global Plus",
+      "tier_type": "plus",
+      "country_count": 143,
+      "countries": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM",
+        "JE",
+        "KH",
+        "SA",
+        "GF",
+        "GG",
+        "EC",
+        "JP",
+        "AR",
+        "CR",
+        "UY",
+        "CL",
+        "SV",
+        "GI",
+        "CA",
+        "IQ",
+        "LA",
+        "MX",
+        "PE",
+        "MA",
+        "NG",
+        "AE",
+        "GP",
+        "KE",
+        "MG",
+        "TZ",
+        "ZM",
+        "UG",
+        "BJ",
+        "CD",
+        "GA",
+        "MW",
+        "TD",
+        "CG",
+        "RW",
+        "MU",
+        "AF",
+        "NP",
+        "PA",
+        "PY",
+        "PR",
+        "MN",
+        "NE",
+        "AN",
+        "JM",
+        "CO",
+        "JO",
+        "MS",
+        "AI",
+        "BB",
+        "KY",
+        "AG",
+        "DM",
+        "GD",
+        "KN",
+        "LC",
+        "VC",
+        "VG",
+        "TC"
+      ],
+      "monitored": true,
+      "tracking_id": "TRK_CDBE892B",
+      "packages": [
+        {
+          "sku": "GLOBAL_PLUS_1GB_7D",
+          "data_gb": 1,
+          "validity_days": 7,
+          "price_usd": 3.49
+        },
+        {
+          "sku": "GLOBAL_PLUS_3GB_7D",
+          "data_gb": 3,
+          "validity_days": 7,
+          "price_usd": 9.49
+        },
+        {
+          "sku": "GLOBAL_PLUS_5GB_15D",
+          "data_gb": 5,
+          "validity_days": 15,
+          "price_usd": 12.49
+        },
+        {
+          "sku": "GLOBAL_PLUS_10GB_15D",
+          "data_gb": 10,
+          "validity_days": 15,
+          "price_usd": 24.49
+        },
+        {
+          "sku": "GLOBAL_PLUS_20GB_30D",
+          "data_gb": 20,
+          "validity_days": 30,
+          "price_usd": 33.49
+        }
+      ]
+    }
+  ],
+  "products": [
+    {
+      "sku": "GLOBAL_LITE_1GB_7D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Lite",
+      "tier_type": "lite",
+      "data_gb": 1,
+      "validity_days": 7,
+      "base_price_usd": 1.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 1,
+      "CC": 0,
+      "SP": 0,
+      "CP": 0,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME"
+      ],
+      "prices": {
+        "peak": 6.99,
+        "high": 5.99,
+        "shoulder": 5.49,
+        "low": 4.49
+      }
+    },
+    {
+      "sku": "GLOBAL_LITE_3GB_7D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Lite",
+      "tier_type": "lite",
+      "data_gb": 3,
+      "validity_days": 7,
+      "base_price_usd": 2.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 1,
+      "CC": 0,
+      "SP": 0,
+      "CP": 0,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME"
+      ],
+      "prices": {
+        "peak": 17.99,
+        "high": 15.99,
+        "shoulder": 14.49,
+        "low": 12.49
+      }
+    },
+    {
+      "sku": "GLOBAL_LITE_5GB_15D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Lite",
+      "tier_type": "lite",
+      "data_gb": 5,
+      "validity_days": 15,
+      "base_price_usd": 2.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 1,
+      "CC": 0,
+      "SP": 0,
+      "CP": 0,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME"
+      ],
+      "prices": {
+        "peak": 25.99,
+        "high": 22.99,
+        "shoulder": 20.49,
+        "low": 18.49
+      }
+    },
+    {
+      "sku": "GLOBAL_LITE_10GB_15D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Lite",
+      "tier_type": "lite",
+      "data_gb": 10,
+      "validity_days": 15,
+      "base_price_usd": 5.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 1,
+      "CC": 0,
+      "SP": 0,
+      "CP": 1,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME"
+      ],
+      "prices": {
+        "peak": 42.99,
+        "high": 37.99,
+        "shoulder": 34.49,
+        "low": 30.49
+      }
+    },
+    {
+      "sku": "GLOBAL_LITE_20GB_30D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Lite",
+      "tier_type": "lite",
+      "data_gb": 20,
+      "validity_days": 30,
+      "base_price_usd": 7.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 1,
+      "CC": 0,
+      "SP": 0,
+      "CP": 1,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME"
+      ],
+      "prices": {
+        "peak": 49.99,
+        "high": 43.99,
+        "shoulder": 39.49,
+        "low": 36.49
+      }
+    },
+    {
+      "sku": "GLOBAL_STANDARD_1GB_7D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Standard",
+      "tier_type": "standard",
+      "data_gb": 1,
+      "validity_days": 7,
+      "base_price_usd": 1.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 0,
+      "CC": 0,
+      "SP": 0,
+      "CP": 0,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM"
+      ],
+      "prices": {
+        "peak": 7.99,
+        "high": 6.99,
+        "shoulder": 6.49,
+        "low": 5.49
+      }
+    },
+    {
+      "sku": "GLOBAL_STANDARD_3GB_7D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Standard",
+      "tier_type": "standard",
+      "data_gb": 3,
+      "validity_days": 7,
+      "base_price_usd": 4.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 0,
+      "CC": 0,
+      "SP": 0,
+      "CP": 0,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM"
+      ],
+      "prices": {
+        "peak": 21.99,
+        "high": 19.99,
+        "shoulder": 17.49,
+        "low": 15.49
+      }
+    },
+    {
+      "sku": "GLOBAL_STANDARD_5GB_15D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Standard",
+      "tier_type": "standard",
+      "data_gb": 5,
+      "validity_days": 15,
+      "base_price_usd": 5.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 0,
+      "CC": 0,
+      "SP": 0,
+      "CP": 0,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM"
+      ],
+      "prices": {
+        "peak": 31.99,
+        "high": 27.99,
+        "shoulder": 25.49,
+        "low": 23.49
+      }
+    },
+    {
+      "sku": "GLOBAL_STANDARD_10GB_15D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Standard",
+      "tier_type": "standard",
+      "data_gb": 10,
+      "validity_days": 15,
+      "base_price_usd": 11.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 0,
+      "CC": 0,
+      "SP": 0,
+      "CP": 1,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM"
+      ],
+      "prices": {
+        "peak": 51.99,
+        "high": 45.99,
+        "shoulder": 41.49,
+        "low": 37.49
+      }
+    },
+    {
+      "sku": "GLOBAL_STANDARD_20GB_30D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Standard",
+      "tier_type": "standard",
+      "data_gb": 20,
+      "validity_days": 30,
+      "base_price_usd": 15.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 0,
+      "CC": 0,
+      "SP": 0,
+      "CP": 1,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM"
+      ],
+      "prices": {
+        "peak": 60.99,
+        "high": 53.99,
+        "shoulder": 48.49,
+        "low": 44.49
+      }
+    },
+    {
+      "sku": "GLOBAL_PLUS_1GB_7D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Plus",
+      "tier_type": "plus",
+      "data_gb": 1,
+      "validity_days": 7,
+      "base_price_usd": 3.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 0,
+      "CC": 1,
+      "SP": 2,
+      "CP": 0,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM",
+        "JE",
+        "KH",
+        "SA",
+        "GF",
+        "GG",
+        "EC",
+        "JP",
+        "AR",
+        "CR",
+        "UY",
+        "CL",
+        "SV",
+        "GI",
+        "CA",
+        "IQ",
+        "LA",
+        "MX",
+        "PE",
+        "MA",
+        "NG",
+        "AE",
+        "GP",
+        "KE",
+        "MG",
+        "TZ",
+        "ZM",
+        "UG",
+        "BJ",
+        "CD",
+        "GA",
+        "MW",
+        "TD",
+        "CG",
+        "RW",
+        "MU",
+        "AF",
+        "NP",
+        "PA",
+        "PY",
+        "PR",
+        "MN",
+        "NE",
+        "AN",
+        "JM",
+        "CO",
+        "JO",
+        "MS",
+        "AI",
+        "BB",
+        "KY",
+        "AG",
+        "DM",
+        "GD",
+        "KN",
+        "LC",
+        "VC",
+        "VG",
+        "TC"
+      ],
+      "prices": {
+        "peak": 8.99,
+        "high": 7.99,
+        "shoulder": 7.49,
+        "low": 6.49
+      }
+    },
+    {
+      "sku": "GLOBAL_PLUS_3GB_7D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Plus",
+      "tier_type": "plus",
+      "data_gb": 3,
+      "validity_days": 7,
+      "base_price_usd": 9.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 0,
+      "CC": 1,
+      "SP": 2,
+      "CP": 0,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM",
+        "JE",
+        "KH",
+        "SA",
+        "GF",
+        "GG",
+        "EC",
+        "JP",
+        "AR",
+        "CR",
+        "UY",
+        "CL",
+        "SV",
+        "GI",
+        "CA",
+        "IQ",
+        "LA",
+        "MX",
+        "PE",
+        "MA",
+        "NG",
+        "AE",
+        "GP",
+        "KE",
+        "MG",
+        "TZ",
+        "ZM",
+        "UG",
+        "BJ",
+        "CD",
+        "GA",
+        "MW",
+        "TD",
+        "CG",
+        "RW",
+        "MU",
+        "AF",
+        "NP",
+        "PA",
+        "PY",
+        "PR",
+        "MN",
+        "NE",
+        "AN",
+        "JM",
+        "CO",
+        "JO",
+        "MS",
+        "AI",
+        "BB",
+        "KY",
+        "AG",
+        "DM",
+        "GD",
+        "KN",
+        "LC",
+        "VC",
+        "VG",
+        "TC"
+      ],
+      "prices": {
+        "peak": 23.99,
+        "high": 20.99,
+        "shoulder": 18.49,
+        "low": 17.49
+      }
+    },
+    {
+      "sku": "GLOBAL_PLUS_5GB_15D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Plus",
+      "tier_type": "plus",
+      "data_gb": 5,
+      "validity_days": 15,
+      "base_price_usd": 12.49,
+      "pricing_mode": "seasonal",
+      "RL": 1,
+      "PS": 5,
+      "CT": 0,
+      "CC": 1,
+      "SP": 2,
+      "CP": 0,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM",
+        "JE",
+        "KH",
+        "SA",
+        "GF",
+        "GG",
+        "EC",
+        "JP",
+        "AR",
+        "CR",
+        "UY",
+        "CL",
+        "SV",
+        "GI",
+        "CA",
+        "IQ",
+        "LA",
+        "MX",
+        "PE",
+        "MA",
+        "NG",
+        "AE",
+        "GP",
+        "KE",
+        "MG",
+        "TZ",
+        "ZM",
+        "UG",
+        "BJ",
+        "CD",
+        "GA",
+        "MW",
+        "TD",
+        "CG",
+        "RW",
+        "MU",
+        "AF",
+        "NP",
+        "PA",
+        "PY",
+        "PR",
+        "MN",
+        "NE",
+        "AN",
+        "JM",
+        "CO",
+        "JO",
+        "MS",
+        "AI",
+        "BB",
+        "KY",
+        "AG",
+        "DM",
+        "GD",
+        "KN",
+        "LC",
+        "VC",
+        "VG",
+        "TC"
+      ],
+      "prices": {
+        "peak": 34.99,
+        "high": 30.99,
+        "shoulder": 27.49,
+        "low": 24.49
+      }
+    },
+    {
+      "sku": "GLOBAL_PLUS_10GB_15D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Plus",
+      "tier_type": "plus",
+      "data_gb": 10,
+      "validity_days": 15,
+      "base_price_usd": 24.49,
+      "pricing_mode": "seasonal",
+      "RL": 3,
+      "PS": 5,
+      "CT": 0,
+      "CC": 1,
+      "SP": 2,
+      "CP": 1,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM",
+        "JE",
+        "KH",
+        "SA",
+        "GF",
+        "GG",
+        "EC",
+        "JP",
+        "AR",
+        "CR",
+        "UY",
+        "CL",
+        "SV",
+        "GI",
+        "CA",
+        "IQ",
+        "LA",
+        "MX",
+        "PE",
+        "MA",
+        "NG",
+        "AE",
+        "GP",
+        "KE",
+        "MG",
+        "TZ",
+        "ZM",
+        "UG",
+        "BJ",
+        "CD",
+        "GA",
+        "MW",
+        "TD",
+        "CG",
+        "RW",
+        "MU",
+        "AF",
+        "NP",
+        "PA",
+        "PY",
+        "PR",
+        "MN",
+        "NE",
+        "AN",
+        "JM",
+        "CO",
+        "JO",
+        "MS",
+        "AI",
+        "BB",
+        "KY",
+        "AG",
+        "DM",
+        "GD",
+        "KN",
+        "LC",
+        "VC",
+        "VG",
+        "TC"
+      ],
+      "prices": {
+        "peak": 56.99,
+        "high": 49.99,
+        "shoulder": 45.49,
+        "low": 40.49
+      }
+    },
+    {
+      "sku": "GLOBAL_PLUS_20GB_30D",
+      "plan_type": "global",
+      "region": "GLOBAL",
+      "tier": "Global Plus",
+      "tier_type": "plus",
+      "data_gb": 20,
+      "validity_days": 30,
+      "base_price_usd": 33.49,
+      "pricing_mode": "seasonal",
+      "RL": 3,
+      "PS": 5,
+      "CT": 0,
+      "CC": 1,
+      "SP": 2,
+      "CP": 1,
+      "countries_included": [
+        "UA",
+        "BE",
+        "AT",
+        "CY",
+        "PL",
+        "SK",
+        "BG",
+        "GR",
+        "LI",
+        "EE",
+        "FI",
+        "SE",
+        "FR",
+        "IE",
+        "PT",
+        "RO",
+        "ES",
+        "IT",
+        "KG",
+        "LU",
+        "VA",
+        "DK",
+        "LT",
+        "NO",
+        "KZ",
+        "MT",
+        "SI",
+        "DE",
+        "HR",
+        "HU",
+        "NL",
+        "UZ",
+        "GB",
+        "LV",
+        "ME",
+        "PK",
+        "AL",
+        "CZ",
+        "MD",
+        "TR",
+        "HK",
+        "IL",
+        "MO",
+        "RS",
+        "BD",
+        "CH",
+        "RU",
+        "US",
+        "MY",
+        "AU",
+        "NZ",
+        "TH",
+        "GE",
+        "AM",
+        "IS",
+        "EG",
+        "ID",
+        "SG",
+        "RE",
+        "VN",
+        "DZ",
+        "LK",
+        "PH",
+        "TN",
+        "BA",
+        "BY",
+        "KW",
+        "QA",
+        "OM",
+        "FO",
+        "IN",
+        "TW",
+        "MK",
+        "ZA",
+        "CN",
+        "AZ",
+        "FJ",
+        "BH",
+        "KR",
+        "XK",
+        "BR",
+        "TJ",
+        "GH",
+        "AD",
+        "IM",
+        "JE",
+        "KH",
+        "SA",
+        "GF",
+        "GG",
+        "EC",
+        "JP",
+        "AR",
+        "CR",
+        "UY",
+        "CL",
+        "SV",
+        "GI",
+        "CA",
+        "IQ",
+        "LA",
+        "MX",
+        "PE",
+        "MA",
+        "NG",
+        "AE",
+        "GP",
+        "KE",
+        "MG",
+        "TZ",
+        "ZM",
+        "UG",
+        "BJ",
+        "CD",
+        "GA",
+        "MW",
+        "TD",
+        "CG",
+        "RW",
+        "MU",
+        "AF",
+        "NP",
+        "PA",
+        "PY",
+        "PR",
+        "MN",
+        "NE",
+        "AN",
+        "JM",
+        "CO",
+        "JO",
+        "MS",
+        "AI",
+        "BB",
+        "KY",
+        "AG",
+        "DM",
+        "GD",
+        "KN",
+        "LC",
+        "VC",
+        "VG",
+        "TC"
+      ],
+      "prices": {
+        "peak": 65.99,
+        "high": 57.99,
+        "shoulder": 52.49,
+        "low": 47.49
+      }
+    }
+  ],
+  "seasonal_promos": [
+    {
+      "code": "FROST26_LITE",
+      "display_name": "Winter Frost Magic",
+      "discount_percent": 15,
+      "valid_from": "2026-12-01",
+      "valid_to": "2027-02-28",
+      "wave": null,
+      "season": "winter",
+      "year": 2026,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "FROST26_STANDARD",
+      "display_name": "Winter Frost Magic",
+      "discount_percent": 15,
+      "valid_from": "2026-12-01",
+      "valid_to": "2027-02-28",
+      "wave": null,
+      "season": "winter",
+      "year": 2026,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "CHILL26_LITE",
+      "display_name": "Winter Wonderland Sale",
+      "discount_percent": 20,
+      "valid_from": "2026-12-01",
+      "valid_to": "2027-02-28",
+      "wave": null,
+      "season": "winter",
+      "year": 2026,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "CHILL26_STANDARD",
+      "display_name": "Winter Wonderland Sale",
+      "discount_percent": 20,
+      "valid_from": "2026-12-01",
+      "valid_to": "2027-02-28",
+      "wave": null,
+      "season": "winter",
+      "year": 2026,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "SPARK26_LITE",
+      "display_name": "Ignite Your Spring Spark",
+      "discount_percent": 10,
+      "valid_from": "2026-03-01",
+      "valid_to": "2026-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2026,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "SPARK26_STANDARD",
+      "display_name": "Ignite Your Spring Spark",
+      "discount_percent": 10,
+      "valid_from": "2026-03-01",
+      "valid_to": "2026-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2026,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "SPARK26_PLUS",
+      "display_name": "Ignite Your Spring Spark",
+      "discount_percent": 10,
+      "valid_from": "2026-03-01",
+      "valid_to": "2026-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2026,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_5GB_15D"
+      ]
+    },
+    {
+      "code": "BLOOM26_LITE",
+      "display_name": "Spring Break Special",
+      "discount_percent": 15,
+      "valid_from": "2026-03-01",
+      "valid_to": "2026-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2026,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "BLOOM26_STANDARD",
+      "display_name": "Spring Break Special",
+      "discount_percent": 15,
+      "valid_from": "2026-03-01",
+      "valid_to": "2026-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2026,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "BLOOM26_PLUS",
+      "display_name": "Spring Break Special",
+      "discount_percent": 15,
+      "valid_from": "2026-03-01",
+      "valid_to": "2026-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2026,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_5GB_15D"
+      ]
+    },
+    {
+      "code": "SUNNY26_LITE",
+      "display_name": "Summer Sun Saver",
+      "discount_percent": 10,
+      "valid_from": "2026-06-01",
+      "valid_to": "2026-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2026,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_10GB_15D"
+      ]
+    },
+    {
+      "code": "SUNNY26_STANDARD",
+      "display_name": "Summer Sun Saver",
+      "discount_percent": 10,
+      "valid_from": "2026-06-01",
+      "valid_to": "2026-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2026,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_10GB_15D"
+      ]
+    },
+    {
+      "code": "SUNNY26_PLUS",
+      "display_name": "Summer Sun Saver",
+      "discount_percent": 10,
+      "valid_from": "2026-06-01",
+      "valid_to": "2026-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2026,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_10GB_15D"
+      ]
+    },
+    {
+      "code": "BEACH26_LITE",
+      "display_name": "Beach Season Special",
+      "discount_percent": 15,
+      "valid_from": "2026-06-01",
+      "valid_to": "2026-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2026,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_10GB_15D"
+      ]
+    },
+    {
+      "code": "BEACH26_STANDARD",
+      "display_name": "Beach Season Special",
+      "discount_percent": 15,
+      "valid_from": "2026-06-01",
+      "valid_to": "2026-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2026,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_10GB_15D"
+      ]
+    },
+    {
+      "code": "BEACH26_PLUS",
+      "display_name": "Beach Season Special",
+      "discount_percent": 15,
+      "valid_from": "2026-06-01",
+      "valid_to": "2026-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2026,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_10GB_15D"
+      ]
+    },
+    {
+      "code": "LEAF26_LITE",
+      "display_name": "Fall Colors Sale",
+      "discount_percent": 10,
+      "valid_from": "2026-09-01",
+      "valid_to": "2026-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2026,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "LEAF26_STANDARD",
+      "display_name": "Fall Colors Sale",
+      "discount_percent": 10,
+      "valid_from": "2026-09-01",
+      "valid_to": "2026-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2026,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "LEAF26_PLUS",
+      "display_name": "Fall Colors Sale",
+      "discount_percent": 10,
+      "valid_from": "2026-09-01",
+      "valid_to": "2026-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2026,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_5GB_15D"
+      ]
+    },
+    {
+      "code": "HARVEST26_LITE",
+      "display_name": "Autumn Adventure",
+      "discount_percent": 15,
+      "valid_from": "2026-09-01",
+      "valid_to": "2026-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2026,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "HARVEST26_STANDARD",
+      "display_name": "Autumn Adventure",
+      "discount_percent": 15,
+      "valid_from": "2026-09-01",
+      "valid_to": "2026-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2026,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "HARVEST26_PLUS",
+      "display_name": "Autumn Adventure",
+      "discount_percent": 15,
+      "valid_from": "2026-09-01",
+      "valid_to": "2026-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2026,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_5GB_15D"
+      ]
+    },
+    {
+      "code": "FROST27_LITE",
+      "display_name": "Winter Frost Magic",
+      "discount_percent": 15,
+      "valid_from": "2027-12-01",
+      "valid_to": "2028-02-28",
+      "wave": null,
+      "season": "winter",
+      "year": 2027,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "FROST27_STANDARD",
+      "display_name": "Winter Frost Magic",
+      "discount_percent": 15,
+      "valid_from": "2027-12-01",
+      "valid_to": "2028-02-28",
+      "wave": null,
+      "season": "winter",
+      "year": 2027,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "CHILL27_LITE",
+      "display_name": "Winter Wonderland Sale",
+      "discount_percent": 20,
+      "valid_from": "2027-12-01",
+      "valid_to": "2028-02-28",
+      "wave": null,
+      "season": "winter",
+      "year": 2027,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "CHILL27_STANDARD",
+      "display_name": "Winter Wonderland Sale",
+      "discount_percent": 20,
+      "valid_from": "2027-12-01",
+      "valid_to": "2028-02-28",
+      "wave": null,
+      "season": "winter",
+      "year": 2027,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "SPARK27_LITE",
+      "display_name": "Ignite Your Spring Spark",
+      "discount_percent": 10,
+      "valid_from": "2027-03-01",
+      "valid_to": "2027-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2027,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "SPARK27_STANDARD",
+      "display_name": "Ignite Your Spring Spark",
+      "discount_percent": 10,
+      "valid_from": "2027-03-01",
+      "valid_to": "2027-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2027,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "SPARK27_PLUS",
+      "display_name": "Ignite Your Spring Spark",
+      "discount_percent": 10,
+      "valid_from": "2027-03-01",
+      "valid_to": "2027-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2027,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_5GB_15D"
+      ]
+    },
+    {
+      "code": "BLOOM27_LITE",
+      "display_name": "Spring Break Special",
+      "discount_percent": 15,
+      "valid_from": "2027-03-01",
+      "valid_to": "2027-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2027,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "BLOOM27_STANDARD",
+      "display_name": "Spring Break Special",
+      "discount_percent": 15,
+      "valid_from": "2027-03-01",
+      "valid_to": "2027-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2027,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "BLOOM27_PLUS",
+      "display_name": "Spring Break Special",
+      "discount_percent": 15,
+      "valid_from": "2027-03-01",
+      "valid_to": "2027-05-28",
+      "wave": null,
+      "season": "spring",
+      "year": 2027,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_5GB_15D"
+      ]
+    },
+    {
+      "code": "SUNNY27_LITE",
+      "display_name": "Summer Sun Saver",
+      "discount_percent": 10,
+      "valid_from": "2027-06-01",
+      "valid_to": "2027-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2027,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_10GB_15D"
+      ]
+    },
+    {
+      "code": "SUNNY27_STANDARD",
+      "display_name": "Summer Sun Saver",
+      "discount_percent": 10,
+      "valid_from": "2027-06-01",
+      "valid_to": "2027-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2027,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_10GB_15D"
+      ]
+    },
+    {
+      "code": "SUNNY27_PLUS",
+      "display_name": "Summer Sun Saver",
+      "discount_percent": 10,
+      "valid_from": "2027-06-01",
+      "valid_to": "2027-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2027,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_10GB_15D"
+      ]
+    },
+    {
+      "code": "BEACH27_LITE",
+      "display_name": "Beach Season Special",
+      "discount_percent": 15,
+      "valid_from": "2027-06-01",
+      "valid_to": "2027-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2027,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_10GB_15D"
+      ]
+    },
+    {
+      "code": "BEACH27_STANDARD",
+      "display_name": "Beach Season Special",
+      "discount_percent": 15,
+      "valid_from": "2027-06-01",
+      "valid_to": "2027-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2027,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_10GB_15D"
+      ]
+    },
+    {
+      "code": "BEACH27_PLUS",
+      "display_name": "Beach Season Special",
+      "discount_percent": 15,
+      "valid_from": "2027-06-01",
+      "valid_to": "2027-08-28",
+      "wave": null,
+      "season": "summer",
+      "year": 2027,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_10GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_10GB_15D"
+      ]
+    },
+    {
+      "code": "LEAF27_LITE",
+      "display_name": "Fall Colors Sale",
+      "discount_percent": 10,
+      "valid_from": "2027-09-01",
+      "valid_to": "2027-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2027,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "LEAF27_STANDARD",
+      "display_name": "Fall Colors Sale",
+      "discount_percent": 10,
+      "valid_from": "2027-09-01",
+      "valid_to": "2027-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2027,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "LEAF27_PLUS",
+      "display_name": "Fall Colors Sale",
+      "discount_percent": 10,
+      "valid_from": "2027-09-01",
+      "valid_to": "2027-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2027,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_5GB_15D"
+      ]
+    },
+    {
+      "code": "HARVEST27_LITE",
+      "display_name": "Autumn Adventure",
+      "discount_percent": 15,
+      "valid_from": "2027-09-01",
+      "valid_to": "2027-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2027,
+      "region": "global",
+      "tier": "LITE",
+      "applies_to": [
+        "GLOBAL_LITE_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_LITE_5GB_15D"
+      ]
+    },
+    {
+      "code": "HARVEST27_STANDARD",
+      "display_name": "Autumn Adventure",
+      "discount_percent": 15,
+      "valid_from": "2027-09-01",
+      "valid_to": "2027-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2027,
+      "region": "global",
+      "tier": "STANDARD",
+      "applies_to": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_STANDARD_5GB_15D"
+      ]
+    },
+    {
+      "code": "HARVEST27_PLUS",
+      "display_name": "Autumn Adventure",
+      "discount_percent": 15,
+      "valid_from": "2027-09-01",
+      "valid_to": "2027-11-28",
+      "wave": null,
+      "season": "fall",
+      "year": 2027,
+      "region": "global",
+      "tier": "PLUS",
+      "applies_to": [
+        "GLOBAL_PLUS_5GB_15D"
+      ],
+      "applicable_skus": [
+        "GLOBAL_PLUS_5GB_15D"
+      ]
+    }
+  ],
+  "event_promos": [],
+  "surge_pricing": [
+    {
+      "event_id": "LE_MANS_24H",
+      "event_name": "24 Hours of Le Mans",
+      "country": "FR",
+      "city": "Le Mans",
+      "valid_from": "2026-06-13",
+      "valid_to": "2026-06-14",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "HELLFEST",
+      "event_name": "Hellfest",
+      "country": "FR",
+      "city": "Clisson",
+      "valid_from": "2026-06-18",
+      "valid_to": "2026-06-21",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "SOLIDAYS",
+      "event_name": "Solidays",
+      "country": "FR",
+      "city": "Paris",
+      "valid_from": "2026-06-19",
+      "valid_to": "2026-06-21",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "FETE_MUSIQUE",
+      "event_name": "F\u00eate de la Musique",
+      "country": "FR",
+      "city": "Paris",
+      "valid_from": "2026-06-21",
+      "valid_to": "2026-06-21",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "SAN_FERMIN",
+      "event_name": "San Ferm\u00edn / Running of the Bulls",
+      "country": "ES",
+      "city": "Pamplona",
+      "valid_from": "2026-07-06",
+      "valid_to": "2026-07-14",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "LA_TOMATINA",
+      "event_name": "La Tomatina",
+      "country": "ES",
+      "city": "Bu\u00f1ol",
+      "valid_from": "2026-08-26",
+      "valid_to": "2026-08-26",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "SPAIN_BEACH_PEAK",
+      "event_name": "Spain Beach Season Peak",
+      "country": "ES",
+      "city": "Barcelona, Valencia, Ibiza",
+      "valid_from": "2026-08-01",
+      "valid_to": "2026-08-31",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "TOUR_DE_FRANCE",
+      "event_name": "Tour de France",
+      "country": "FR",
+      "city": "Various",
+      "valid_from": "2026-07-04",
+      "valid_to": "2026-07-26",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "PRIMAVERA_SOUND",
+      "event_name": "Primavera Sound",
+      "country": "ES",
+      "city": "Barcelona",
+      "valid_from": "2026-06-04",
+      "valid_to": "2026-06-08",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "US_FOURTH_JULY",
+      "event_name": "US Independence Day / Fourth of July",
+      "country": "US",
+      "city": "Nationwide",
+      "valid_from": "2026-07-03",
+      "valid_to": "2026-07-05",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "TAIWAN_DOUBLE_TEN",
+      "event_name": "Taiwan National Day / Double Ten Day",
+      "country": "TW",
+      "city": "Taipei",
+      "valid_from": "2026-10-10",
+      "valid_to": "2026-10-10",
+      "base_season": "high",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 5.99,
+          "surge_price": 6.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 15.99,
+          "surge_price": 18.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 22.99,
+          "surge_price": 26.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 37.99,
+          "surge_price": 43.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 43.99,
+          "surge_price": 50.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 19.99,
+          "surge_price": 22.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 27.99,
+          "surge_price": 32.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 45.99,
+          "surge_price": 52.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 53.99,
+          "surge_price": 62.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 20.99,
+          "surge_price": 24.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 30.99,
+          "surge_price": 35.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 57.99,
+          "surge_price": 66.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "TAIWAN_SUMMER_TOURISM",
+      "event_name": "Taiwan Summer Tourism Peak",
+      "country": "TW",
+      "city": "Taipei, Kaohsiung, Taichung",
+      "valid_from": "2026-06-01",
+      "valid_to": "2026-08-31",
+      "base_season": "peak",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 17.99,
+          "surge_price": 20.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 25.99,
+          "surge_price": 29.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 42.99,
+          "surge_price": 49.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 21.99,
+          "surge_price": 25.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 31.99,
+          "surge_price": 36.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 51.99,
+          "surge_price": 59.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 60.99,
+          "surge_price": 70.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 8.99,
+          "surge_price": 10.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 23.99,
+          "surge_price": 27.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 34.99,
+          "surge_price": 40.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 56.99,
+          "surge_price": 65.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 65.99,
+          "surge_price": 75.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    },
+    {
+      "event_id": "PH_HOLY_WEEK",
+      "event_name": "Philippines Holy Week",
+      "country": "PH",
+      "city": "Boracay, El Nido, Cebu",
+      "valid_from": "2026-04-02",
+      "valid_to": "2026-04-05",
+      "base_season": "high",
+      "increase_percent": 14,
+      "multiplier": 1.15,
+      "applies_to": "all_skus",
+      "affected_sku_count": 15,
+      "surge_prices": {
+        "GLOBAL_LITE_1GB_7D": {
+          "base_price": 5.99,
+          "surge_price": 6.99
+        },
+        "GLOBAL_LITE_3GB_7D": {
+          "base_price": 15.99,
+          "surge_price": 18.99
+        },
+        "GLOBAL_LITE_5GB_15D": {
+          "base_price": 22.99,
+          "surge_price": 26.99
+        },
+        "GLOBAL_LITE_10GB_15D": {
+          "base_price": 37.99,
+          "surge_price": 43.99
+        },
+        "GLOBAL_LITE_20GB_30D": {
+          "base_price": 43.99,
+          "surge_price": 50.99
+        },
+        "GLOBAL_STANDARD_1GB_7D": {
+          "base_price": 6.99,
+          "surge_price": 8.99
+        },
+        "GLOBAL_STANDARD_3GB_7D": {
+          "base_price": 19.99,
+          "surge_price": 22.99
+        },
+        "GLOBAL_STANDARD_5GB_15D": {
+          "base_price": 27.99,
+          "surge_price": 32.99
+        },
+        "GLOBAL_STANDARD_10GB_15D": {
+          "base_price": 45.99,
+          "surge_price": 52.99
+        },
+        "GLOBAL_STANDARD_20GB_30D": {
+          "base_price": 53.99,
+          "surge_price": 62.99
+        },
+        "GLOBAL_PLUS_1GB_7D": {
+          "base_price": 7.99,
+          "surge_price": 9.99
+        },
+        "GLOBAL_PLUS_3GB_7D": {
+          "base_price": 20.99,
+          "surge_price": 24.99
+        },
+        "GLOBAL_PLUS_5GB_15D": {
+          "base_price": 30.99,
+          "surge_price": 35.99
+        },
+        "GLOBAL_PLUS_10GB_15D": {
+          "base_price": 49.99,
+          "surge_price": 57.99
+        },
+        "GLOBAL_PLUS_20GB_30D": {
+          "base_price": 57.99,
+          "surge_price": 66.99
+        }
+      },
+      "region": "global",
+      "overlap_handling": "replace"
+    }
+  ],
+  "tracking": {
+    "enabled": true,
+    "generated_at": "2026-03-27 21:34:43",
+    "rules_version": "2.0",
+    "tracked_countries": [],
+    "tracked_regions": [],
+    "summary": {
+      "total_tracked_countries": 0,
+      "total_tracked_regions": 0,
+      "by_reason": {}
+    }
+  },
+  "summary": {
+    "total_tiers": 3,
+    "total_products": 15,
+    "seasonal_promos": 44,
+    "event_promos": 0,
+    "surge_pricing_events": 13,
+    "tracked_countries": 0
+  }
+}

@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local database
+/data/
+
+# local-only seed scripts containing real org credentials (kept locally for prod seeding)
+/scripts/seed-ucl-orgs.ts
+
+# local CSV exports / analyzer outputs
+/Feb*_outputBWifiReport.csv
+
+# local agent state (oh-my-claudecode, sessions, project memory)
+/.omc/
