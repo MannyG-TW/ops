@@ -40,6 +40,10 @@ import {
   Radio,
   Signal,
   HelpCircle,
+  Shield,
+  Warehouse,
+  Truck,
+  Undo2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +63,7 @@ import { InternalNotes, TEAM_MEMBERS } from "@/components/ui/internal-notes";
 import { Input } from "@/components/ui/input";
 import { fetchOS, fetchTelliSIM, getTelliSIMCredentials } from "@/lib/settings-client";
 import { formatPlanDisplay, detectProductType, findPlanSku, parsePlanSku } from "@/lib/sku-parser";
+import { getSapphireDeviceName } from "@/lib/sapphire-mapping";
 import { getCountryName, ISO2_TO_COUNTRY } from "@/lib/countries";
 import { getCountryFlag } from "@/lib/country-flags";
 import { getCatalogPrice, getPlanCountries } from "@/lib/plan-catalog";
@@ -86,6 +91,10 @@ interface Order {
   created_at?: string | number;
   threshold_date?: number;
   delivery_address?: string;
+  return_address?: string;
+  warehouse?: string | string[];
+  shipping_methods?: string | string[];
+  shipping_methods_key?: string | string[];
   serials?: string | string[];
   product_sku?: string | string[];
   destination_country?: string;
@@ -99,8 +108,18 @@ interface Order {
     qty?: number;
     quantity?: number;
     total?: number;
+    return_address?: string;
+    delivery_address?: string;
   }>;
   coupons?: Array<string | { code?: string; discount?: number; type?: string }>;
+  tracking_information?: Array<{
+    device_serial?: string | number;
+    shipping_carrier?: string;
+    shipping_tracking_number?: string;
+    return_carrier?: string;
+    return_tracking_number?: string;
+    fulfillment_id?: string | number;
+  }>;
   [key: string]: unknown;
 }
 
@@ -170,6 +189,15 @@ function toDate(val?: string | number | null): Date | null {
 }
 
 function formatDate(val?: string | number | null): string {
+  // Date-only strings (YYYY-MM-DD) parse as UTC midnight, which toLocaleDateString
+  // can shift back a day in negative-offset timezones. Parse as local date instead.
+  if (typeof val === "string") {
+    const m = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) {
+      const local = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      return local.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    }
+  }
   const d = toDate(val);
   if (!d) return "—";
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -403,6 +431,11 @@ export default function CustomerProfilePage() {
   const [locationData, setLocationData] = useState<LocationOperator | null>(null);
   const [iccidOrders, setIccidOrders] = useState<Order[]>([]);
 
+  // UCL device binding info (Sapphire/Rental only) — populated when IMEI button clicked
+  const [deviceInfo, setDeviceInfo] = useState<Record<string, unknown> | null>(null);
+  const [deviceInfoError, setDeviceInfoError] = useState<string | null>(null);
+  const [userOffers, setUserOffers] = useState<Array<Record<string, unknown>>>([]);
+
   // Coverage lookup state
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [coverageQuery, setCoverageQuery] = useState("");
@@ -468,6 +501,9 @@ export default function CustomerProfilePage() {
     setCdrTotal(0);
     setLocationData(null);
     setIccidOrders([]);
+    setDeviceInfo(null);
+    setDeviceInfoError(null);
+    setUserOffers([]);
 
     let now: Date;
     let from: Date;
@@ -481,15 +517,76 @@ export default function CustomerProfilePage() {
       from.setDate(from.getDate() - parseInt(dateRange));
     }
 
+    const skus = selectedOrder ? getSkus(selectedOrder) : [];
+    const pkgSkus = selectedOrder?.order_details_data?.map((d) => d.package_sku || "").filter(Boolean) || [];
+    const productType = detectProductType(skus, pkgSkus);
+
+    // Rentals: CDR fetch must cover the trip window, not the UI's last-30-days default —
+    // a trip older than 30 days would otherwise return zero records.
+    if (productType === "rental" && dateRange !== "custom") {
+      const tripLine = selectedOrder?.order_details_data?.find((d) => d.trip_start || d.trip_end);
+      const ts = tripLine?.trip_start ? new Date(tripLine.trip_start) : null;
+      const te = tripLine?.trip_end ? new Date(tripLine.trip_end) : null;
+      if (ts && te && !isNaN(ts.getTime()) && !isNaN(te.getTime())) {
+        from = new Date(ts.getTime() - 86_400_000);           // 1-day buffer before trip
+        now = new Date(te.getTime() + 86_400_000 - 1);        // full end day + small buffer
+      }
+    }
     const isTelliSim = selectedOrder ? isTelliSimEsim(selectedOrder) : false;
+    const isDevice = productType === "sapphire" || productType === "rental";
 
     try {
+      // Branch: Sapphire/Rental serials are IMEIs — query UCL CDR + device binding.
+      // eSIM serials are ICCIDs — query TelliSIM + ICCID CDR.
+      if (isDevice) {
+        const results = await Promise.allSettled([
+          fetchOS("/api/opensearch/cdr", {
+            imei: serial,
+            from: from.toISOString(),
+            to: now.toISOString(),
+            size: 500,
+          }),
+          fetch("/api/ucl/device-info", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ imei: serial, orgUsername: selectedOrder?.system || undefined }),
+          }).then((r) => r.json()),
+        ]);
+
+        const [cdrRes, deviceRes] = results as PromiseSettledResult<Record<string, unknown>>[];
+        if (cdrRes.status === "fulfilled" && cdrRes.value.ok) {
+          const cdr = cdrRes.value.cdr as Record<string, unknown> | undefined;
+          const ucl = cdr?.ucl as { records?: Record<string, unknown>[]; total?: number } | undefined;
+          const daily = cdr?.dailyConsumption as { records?: Record<string, unknown>[]; total?: number } | undefined;
+          const records = ucl?.records || daily?.records || [];
+          setCdrRecords(records);
+          setCdrTotal(ucl?.total || daily?.total || 0);
+        }
+        if (deviceRes.status === "fulfilled") {
+          const val = deviceRes.value as {
+            ok?: boolean;
+            binding?: Record<string, unknown>;
+            offers?: Array<Record<string, unknown>>;
+            error?: string;
+          };
+          if (val.ok) {
+            setDeviceInfo(val.binding || null);
+            setUserOffers(val.offers || []);
+          } else {
+            setDeviceInfoError(val.error || "UCL lookup unavailable");
+          }
+        } else {
+          setDeviceInfoError("Network error contacting UCL");
+        }
+        return; // Skip eSIM-only result processing below
+      }
+
       const promises: Promise<unknown>[] = [
         fetchTelliSIM(`/api/tellisim/subscription/${serial}`, {}),
         fetchTelliSIM(`/api/tellisim/smdp/${serial}`, {}),
         fetchOS("/api/opensearch/cdr", {
           iccid: serial,
-          productSku: getSkus(selectedOrder as Order).find(s => s.toUpperCase().includes("ESIM")) || "",
+          productSku: skus.find(s => s.toUpperCase().includes("ESIM")) || "",
           from: from.toISOString(),
           to: now.toISOString(),
           size: 500,
@@ -551,6 +648,7 @@ export default function CustomerProfilePage() {
   }, [dateRange, selectedOrder]);
 
   useEffect(() => { if (selectedSerial) loadServiceData(selectedSerial); }, [dateRange]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   function copy(text: string, field: string) {
     navigator.clipboard.writeText(text);
@@ -719,8 +817,13 @@ export default function CustomerProfilePage() {
     );
   }
 
-  const productType = selectedOrder ? detectProductType(getSkus(selectedOrder)) : "unknown";
-  const productLabel = productType === "esim" ? "eSIM" : productType === "rental" ? "Rental" : productType === "sapphire" ? "Sapphire" : "Order";
+  const packageSkus = selectedOrder?.order_details_data?.map((d) => d.package_sku || "").filter(Boolean) || [];
+  const productType = selectedOrder ? detectProductType(getSkus(selectedOrder), packageSkus) : "unknown";
+  const productLabel =
+    productType === "esim" ? "eSIM"
+    : productType === "rental" ? "Rental"
+    : productType === "sapphire" ? "Sapphire Data Plan"
+    : "Order";
   const planSku = selectedOrder ? findPlanSku(getSkus(selectedOrder)) : null;
   const serials = selectedOrder ? getSerials(selectedOrder) : [];
   const dailyUsage = aggregateDailyUsage(cdrRecords, dateRange === "custom" ? 30 : parseInt(dateRange), dateRange === "custom" ? customFrom : undefined, dateRange === "custom" ? customTo : undefined);
@@ -742,9 +845,51 @@ export default function CustomerProfilePage() {
   const fullName = selectedOrder?.customer_name || [customer?.firstName, customer?.lastName].filter(Boolean).join(" ") || "Unknown Customer";
   const customerPhone = (selectedOrder?.customer_phone as string) || "";
   const currencyCode = (selectedOrder?.currency_iso as string) || (selectedOrder?.currency as string) || "USD";
-  const tripStart = selectedOrder?.order_details_data?.[0]?.trip_start;
-  const tripEnd = selectedOrder?.order_details_data?.[0]?.trip_end;
-  const packageSku = selectedOrder?.order_details_data?.[0]?.package_sku;
+  const orderDetails = selectedOrder?.order_details_data || [];
+  // Find the primary rental/plan line (first item with trip dates)
+  const primaryLine = orderDetails.find((d) => d.trip_start || d.trip_end) || orderDetails[0];
+  const tripStart = primaryLine?.trip_start;
+  const tripEnd = primaryLine?.trip_end;
+  const packageSku = primaryLine?.package_sku;
+  // Insurance is a per-day add-on: qty = number of rental days covered
+  const insuranceLine = orderDetails.find(
+    (d) => (d.product_sku || "").toUpperCase() === "INSURANCE"
+  );
+  // Total rental days (inclusive of trip_start): 04-29 → 05-09 = 11 days
+  const totalRentalDays = (() => {
+    if (!tripStart || !tripEnd) return null;
+    const s = toDate(tripStart);
+    const e = toDate(tripEnd);
+    if (!s || !e) return null;
+    const diff = Math.round((e.getTime() - s.getTime()) / 86400000);
+    return diff >= 0 ? diff + 1 : null;
+  })();
+  // Warehouse, shipping, addresses (rental-specific)
+  const asList = (v: unknown): string[] =>
+    Array.isArray(v) ? (v as string[]).filter(Boolean)
+    : typeof v === "string" && v ? [v]
+    : [];
+  const warehouses = asList(selectedOrder?.warehouse);
+  const shippingMethods = asList(selectedOrder?.shipping_methods);
+  const shippingKeys = asList(selectedOrder?.shipping_methods_key);
+  // Classify: pickup vs ship (postal service or courier)
+  const shippingMode: "pickup" | "ship" | null =
+    shippingKeys.some((k) => /pickup/i.test(k)) || shippingMethods.some((m) => /pickup/i.test(m))
+      ? "pickup"
+      : shippingMethods.length > 0 || shippingKeys.length > 0
+      ? "ship"
+      : null;
+  const returnAddress =
+    (selectedOrder as unknown as { return_address?: string })?.return_address ||
+    primaryLine?.return_address ||
+    "";
+  const deliveryAddress =
+    selectedOrder?.delivery_address || primaryLine?.delivery_address || "";
+  // Fulfillment state: rental with no serial + pre-fulfillment status
+  const isAwaitingFulfillment =
+    productType === "rental"
+    && serials.length === 0
+    && /wait|pending|fulfill|new|processing/i.test(selectedOrder?.status || "");
   const thresholdDate = selectedOrder?.threshold_date;
   const isTelliSim = selectedOrder ? isTelliSimEsim(selectedOrder) : false;
   const hasActivePlan = currentPlan && (currentPlan.state === "ACTIVE" || currentPlan.state === "ENABLED");
@@ -896,9 +1041,8 @@ export default function CustomerProfilePage() {
               const parsed = parsePlanSku(sku);
               const flag = parsed ? getCountryFlag(parsed.countryCode) : "";
               return (
-                <div className="rounded-[8px] bg-muted/30 px-4 py-3">
-                  <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Plan Purchased</p>
-                  <p className="text-[20px] font-[540] text-foreground">
+                <div>
+                  <p className="text-[22px] font-[540] text-charcoal leading-tight">
                     {flag && <span className="mr-2">{flag}</span>}
                     {formatPlanDisplay(sku)}
                   </p>
@@ -926,63 +1070,6 @@ export default function CustomerProfilePage() {
                 </div>
               );
             })()}
-
-            {/* Trip dates — only for Rental/Sapphire orders, NOT eSIM */}
-            {(tripStart || tripEnd) && productType !== "esim" && (
-              <div className="rounded-[8px] border border-lavender/20 bg-lavender/5 px-4 py-3 flex items-center gap-4">
-                <Plane className="h-4 w-4 text-amethyst shrink-0" strokeWidth={1.8} />
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div>
-                    <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60">Trip Start</p>
-                    <p className="text-[14px] font-[540] text-foreground">{formatDate(tripStart)}</p>
-                  </div>
-                  <span className="text-muted-foreground/40">→</span>
-                  <div>
-                    <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60">Trip End</p>
-                    <p className="text-[14px] font-[540] text-foreground">{formatDate(tripEnd)}</p>
-                  </div>
-                  {tripEnd && (
-                    <div className="ml-2">
-                      <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60">Remaining</p>
-                      <p className={cn("text-[14px] font-[600]", {
-                        "text-fraud-red": (daysUntil(tripEnd) ?? 999) <= 3,
-                        "text-fraud-yellow": (daysUntil(tripEnd) ?? 999) > 3 && (daysUntil(tripEnd) ?? 999) <= 7,
-                        "text-success": (daysUntil(tripEnd) ?? 999) > 7,
-                        "text-muted-foreground": (daysUntil(tripEnd) ?? 0) < 0,
-                      })}>
-                        {daysUntilDisplay(tripEnd)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Order details grid */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              <InfoCell icon={Calendar} label="Purchased" value={formatDate(selectedOrder.created_at)} />
-              <InfoCell icon={MapPin} label="Country" value={selectedOrder.destination_country ? getCountryName(selectedOrder.destination_country) : packageSku ? getCountryName(packageSku.split("_")[0]) : "—"} />
-              <InfoCell icon={DollarSign} label="Amount Paid"
-                value={selectedOrder.total != null ? `${Number(selectedOrder.total).toFixed(2)} ${currencyCode}` : "—"} />
-              <InfoCell icon={TrendingUp} label="USD Value"
-                value={(() => {
-                  if (selectedOrder.total_usd) return `$${Number(selectedOrder.total_usd).toFixed(2)}`;
-                  if (selectedOrder.total != null && selectedOrder.order_usd_rate_exchange) {
-                    const rate = parseFloat(selectedOrder.order_usd_rate_exchange);
-                    if (rate > 0) return `$${(Number(selectedOrder.total) / rate).toFixed(2)}`;
-                  }
-                  return currencyCode === "USD" && selectedOrder.total != null ? `$${Number(selectedOrder.total).toFixed(2)}` : "—";
-                })()} />
-              <InfoCell icon={CreditCard} label="Payment"
-                value={selectedOrder.payment_method_title || selectedOrder.delivery_address || "—"} />
-            </div>
-
-            {/* Exchange rate if applicable */}
-            {selectedOrder.order_usd_rate_exchange && currencyCode !== "USD" && (
-              <p className="text-[11px] font-[460] text-muted-foreground">
-                Exchange rate: {selectedOrder.order_usd_rate_exchange} {currencyCode}/USD as of {formatDate(selectedOrder.created_at)}
-              </p>
-            )}
 
             {/* Exchange rate note */}
 
@@ -1058,47 +1145,6 @@ export default function CustomerProfilePage() {
               );
             })()}
 
-            {/* Serial number badges — prominent CTA for support */}
-            {serials.length > 0 && (
-              <div className="rounded-[8px] border border-lavender/30 bg-lavender/5 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-[13px] font-[600] text-foreground flex items-center gap-2">
-                    <Smartphone className="h-4 w-4 text-amethyst" strokeWidth={1.8} />
-                    {productType === "esim" ? "eSIM Serial" : "Device Serial"}
-                  </p>
-                  <p className="text-[11px] font-[460] text-amethyst">Click to load live status from provider</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {serials.map((s) => (
-                    <button key={s} onClick={() => loadServiceData(s)}
-                      className={cn(
-                        "flex items-center gap-2 rounded-[8px] border-2 px-4 py-2.5 text-[13px] font-mono font-[600] transition-all cursor-pointer",
-                        selectedSerial === s
-                          ? "border-lavender bg-lavender/20 text-foreground"
-                          : "border-lavender/40 bg-background text-foreground hover:border-lavender hover:bg-lavender/10"
-                      )}>
-                      {selectedSerial === s && serviceLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-amethyst" />
-                      ) : (
-                        <Wifi className="h-4 w-4 text-amethyst" strokeWidth={1.8} />
-                      )}
-                      {s}
-                      {selectedSerial === s && serviceLoading && (
-                        <span className="text-[11px] font-[500] text-amethyst ml-1">Loading...</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-                {selectedSerial && serviceLoading && (
-                  <div className="mt-3">
-                    <div className="h-1.5 rounded-full bg-parchment overflow-hidden">
-                      <div className="h-full rounded-full bg-lavender animate-pulse" style={{ width: "60%" }} />
-                    </div>
-                    <p className="text-[11px] font-[460] text-muted-foreground mt-1">Fetching real-time data from provider...</p>
-                  </div>
-                )}
-              </div>
-            )}
           </CardContent>
         </Card>
       )}
@@ -1113,6 +1159,24 @@ export default function CustomerProfilePage() {
                 <span className="ml-3 text-[14px] font-[460] text-muted-foreground">Loading service details...</span>
               </CardContent>
             </Card>
+          ) : productType !== "esim" ? (
+            <SapphireDeviceCard
+              imei={selectedSerial}
+              deviceInfo={deviceInfo}
+              deviceInfoError={deviceInfoError}
+              userOffers={userOffers}
+              allOrders={orders}
+              cdrRecords={cdrRecords}
+              cdrTotal={cdrTotal}
+              dailyUsage={dailyUsage}
+              packageSku={packageSku || planSku || ""}
+              tripStart={tripStart}
+              tripEnd={tripEnd}
+              orderCreatedAt={selectedOrder?.created_at}
+              productType={productType}
+              onCopy={(v) => copy(v, "imei")}
+              copied={copiedField === "imei"}
+            />
           ) : serviceError ? (
             <Card className="rounded-[16px]">
               <CardContent className="flex items-center gap-2 py-6 text-fraud-red">
@@ -1648,7 +1712,225 @@ export default function CustomerProfilePage() {
               )}
             </>
           )}
+
         </>
+      )}
+
+      {/* Order Summary — rendered below plan purchases. Two stacked groups:
+          (1) Billing recap: purchased / country / amount / payment
+          (2) Trip: start → end, days, insurance (rentals only) */}
+      {selectedOrder && (
+        <Card className="rounded-[16px]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px] font-[600] text-charcoal flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-charcoal/70" strokeWidth={1.8} />
+              Order Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Billing group */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
+              <SummaryField label="Purchased" value={formatDate(selectedOrder.created_at)} />
+              <SummaryField label="Country" value={(() => {
+                if (selectedOrder.destination_country) return getCountryName(selectedOrder.destination_country);
+                const parsed = parsePlanSku(packageSku || planSku || "");
+                if (parsed?.countryName) return parsed.countryName;
+                return "—";
+              })()} />
+              <SummaryField
+                label="Amount Paid"
+                value={selectedOrder.total != null ? `${Number(selectedOrder.total).toFixed(2)} ${currencyCode}` : "—"}
+              />
+              <SummaryField
+                label="USD Value"
+                value={(() => {
+                  if (selectedOrder.total_usd) return `$${Number(selectedOrder.total_usd).toFixed(2)}`;
+                  if (selectedOrder.total != null && selectedOrder.order_usd_rate_exchange) {
+                    const rate = parseFloat(selectedOrder.order_usd_rate_exchange);
+                    if (rate > 0) return `$${(Number(selectedOrder.total) / rate).toFixed(2)}`;
+                  }
+                  return currencyCode === "USD" && selectedOrder.total != null ? `$${Number(selectedOrder.total).toFixed(2)}` : "—";
+                })()}
+              />
+              <SummaryField label="Payment" value={selectedOrder.payment_method_title || "—"} />
+            </div>
+            {selectedOrder.order_usd_rate_exchange && currencyCode !== "USD" && (
+              <p className="text-[11px] font-[460] text-charcoal/60">
+                Exchange rate: {selectedOrder.order_usd_rate_exchange} {currencyCode}/USD as of {formatDate(selectedOrder.created_at)}
+              </p>
+            )}
+
+            {/* Rental trip — rendered as Feature Title hierarchy per design.md §3:
+                28px / weight 540 / line-height 1.14 / letter-spacing -0.63px.
+                Lavender Glow (#cbb7fb) is used as the sole accent on the → arrow and
+                duration separator to visually distinguish this moment from the 14px
+                billing grid above, while staying inside design.md's single-accent rule. */}
+            {(tripStart || tripEnd) && productType === "rental" && (
+              <>
+                <Separator className="bg-parchment" />
+                <div>
+                  <p className="text-[11px] font-[600] uppercase tracking-wider text-charcoal/60 mb-2 flex items-center gap-1.5">
+                    <Plane className="h-3 w-3" strokeWidth={1.8} /> Rental Trip
+                  </p>
+                  <div className="flex items-baseline gap-3 flex-wrap" style={{ letterSpacing: "-0.63px" }}>
+                    <span className="text-[28px] font-[540] text-charcoal tabular-nums leading-[1.14]">
+                      {formatDate(tripStart)}
+                    </span>
+                    <span className="text-[24px] font-[460] leading-[1.14]" style={{ color: "#cbb7fb" }}>→</span>
+                    <span className="text-[28px] font-[540] text-charcoal tabular-nums leading-[1.14]">
+                      {formatDate(tripEnd)}
+                    </span>
+                  </div>
+                  {(totalRentalDays !== null || insuranceLine) && (
+                    <div className="flex items-center gap-2 flex-wrap mt-2" style={{ letterSpacing: 0 }}>
+                      {totalRentalDays !== null && (
+                        <span className="text-[13px] font-[460] text-charcoal/70">
+                          <span className="font-[600] text-charcoal">{totalRentalDays}</span> day{totalRentalDays === 1 ? "" : "s"} total
+                        </span>
+                      )}
+                      {totalRentalDays !== null && insuranceLine && (
+                        <span style={{ color: "#cbb7fb" }}>·</span>
+                      )}
+                      {insuranceLine && (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Shield className="h-3.5 w-3.5 text-success" strokeWidth={1.8} />
+                          <span className="text-[13px] font-[460] text-charcoal/70">
+                            Insurance · <span className="font-[600] text-charcoal">{insuranceLine.qty || insuranceLine.quantity || 0}</span> day{(insuranceLine.qty || insuranceLine.quantity || 0) === 1 ? "" : "s"}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Fulfillment — rentals only (physical device ships, trip window, return label).
+          eSIMs and Sapphire Data Plan reloads have no warehouse/shipping context, so this card
+          is gated to productType === "rental" (or awaiting fulfillment) only. */}
+      {selectedOrder && productType === "rental" && (
+        (warehouses.length > 0 || shippingMode || deliveryAddress || returnAddress)
+        || (Array.isArray(selectedOrder.tracking_information) && selectedOrder.tracking_information.length > 0)
+        || isAwaitingFulfillment
+      ) && (
+        <Card className="rounded-[16px]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px] font-[600] text-charcoal flex items-center gap-2">
+              <Truck className="h-4 w-4 text-charcoal/70" strokeWidth={1.8} />
+              Fulfillment
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {(warehouses.length > 0 || shippingMode || deliveryAddress || returnAddress) && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
+                {(warehouses.length > 0 || shippingMode) && (
+                  <div>
+                    <p className="text-[11px] font-[600] uppercase tracking-wider text-charcoal/60 mb-1.5 flex items-center gap-1.5">
+                      <Warehouse className="h-3 w-3" strokeWidth={1.8} /> Warehouse
+                    </p>
+                    {warehouses.length > 0 && (
+                      <p className="text-[14px] font-[540] text-charcoal leading-snug">
+                        {warehouses.join(", ")}
+                      </p>
+                    )}
+                    {shippingMode && (
+                      <p className="text-[12px] font-[460] text-charcoal/70 mt-1">
+                        {shippingMode === "pickup" ? "Customer pickup" : `Shipped · ${shippingMethods.join(", ") || "Postal service"}`}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {shippingMode === "ship" && deliveryAddress && (
+                  <div>
+                    <p className="text-[11px] font-[600] uppercase tracking-wider text-charcoal/60 mb-1.5 flex items-center gap-1.5">
+                      <MapPin className="h-3 w-3" strokeWidth={1.8} /> Delivery Address
+                    </p>
+                    <p className="text-[14px] font-[460] text-charcoal leading-snug whitespace-pre-line">{deliveryAddress}</p>
+                  </div>
+                )}
+                {returnAddress && (
+                  <div>
+                    <p className="text-[11px] font-[600] uppercase tracking-wider text-charcoal/60 mb-1.5 flex items-center gap-1.5">
+                      <Undo2 className="h-3 w-3" strokeWidth={1.8} /> Returning From
+                    </p>
+                    <p className="text-[14px] font-[460] text-charcoal leading-snug whitespace-pre-line">{returnAddress}</p>
+                    <p className="text-[11px] font-[460] text-charcoal/60 mt-1">Customer's return-from address</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {Array.isArray(selectedOrder.tracking_information) && selectedOrder.tracking_information.length > 0 && (
+              <>
+                <Separator className="bg-parchment" />
+                <TrackingSection tracking={selectedOrder.tracking_information} />
+              </>
+            )}
+
+            {isAwaitingFulfillment && (
+              <div className="rounded-[8px] border border-dashed border-parchment bg-background px-4 py-5 flex items-start gap-3">
+                <Clock className="h-4 w-4 text-charcoal/70 shrink-0 mt-0.5" strokeWidth={1.8} />
+                <div>
+                  <p className="text-[13px] font-[600] text-charcoal">Waiting to be fulfilled</p>
+                  <p className="text-[12px] font-[460] text-charcoal/70 mt-0.5">
+                    Device has not been assigned yet — no IMEI, device binding, or data usage is available until the warehouse picks and ships the unit.
+                  </p>
+                </div>
+              </div>
+            )}
+
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Device selector — always shown when serials exist, regardless of product type.
+          eSIMs, Sapphire Data reloads, and Rentals all need this to load live plan + usage data. */}
+      {selectedOrder && serials.length > 0 && (
+        <Card className="rounded-[16px]">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-[14px] font-[600] text-charcoal flex items-center gap-2">
+                <Smartphone className="h-4 w-4 text-charcoal/70" strokeWidth={1.8} />
+                {productType === "esim" ? "eSIM" : productType === "sapphire" ? "Device (IMEI)" : "Device"}
+              </CardTitle>
+              <p className="text-[11px] font-[460] text-charcoal/60">Click to reload live status</p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {serials.map((s) => (
+                <button key={s} onClick={() => loadServiceData(s)}
+                  className={cn(
+                    "flex items-center gap-2 rounded-[8px] border-2 px-4 py-2.5 text-[13px] font-mono font-[600] transition-all cursor-pointer",
+                    selectedSerial === s
+                      ? "border-charcoal bg-cream text-charcoal"
+                      : "border-parchment bg-background text-charcoal hover:border-charcoal/40 hover:bg-cream/40"
+                  )}>
+                  {selectedSerial === s && serviceLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-charcoal/70" />
+                  ) : (
+                    <Wifi className="h-4 w-4 text-charcoal/70" strokeWidth={1.8} />
+                  )}
+                  {s}
+                  {selectedSerial === s && serviceLoading && (
+                    <span className="text-[11px] font-[500] text-charcoal/70 ml-1">Loading...</span>
+                  )}
+                </button>
+              ))}
+            </div>
+            {selectedSerial && serviceLoading && (
+              <div className="mt-3">
+                <div className="h-1.5 rounded-full bg-parchment overflow-hidden">
+                  <div className="h-full rounded-full bg-charcoal/60 animate-pulse" style={{ width: "60%" }} />
+                </div>
+                <p className="text-[11px] font-[460] text-charcoal/60 mt-1">Fetching real-time data from provider...</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* ─── 5. TelliSIM Phase 2 Actions (role-gated) ─── */}
@@ -2075,6 +2357,17 @@ function InfoCell({ icon: Icon, label, value }: { icon: React.ElementType; label
   );
 }
 
+// Label-above-value field used by the Order Summary card. Cleaner than InfoCell — no leading icon,
+// tighter vertical rhythm, charcoal tokens for consistency with design.md.
+function SummaryField({ label, value, emphasis }: { label: string; value: string; emphasis?: boolean }) {
+  return (
+    <div>
+      <p className="text-[11px] font-[600] uppercase tracking-wider text-charcoal/60 mb-1">{label}</p>
+      <p className={cn("text-[14px] text-charcoal tabular-nums", emphasis ? "font-[600]" : "font-[540]")}>{value}</p>
+    </div>
+  );
+}
+
 function StatusCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-[8px] bg-background border border-border p-4">
@@ -2271,6 +2564,1182 @@ function ColumnChart({ data, planDataMb }: { data: Array<{ date: string; bytes: 
         </span>
       </div>
     </div>
+  );
+}
+
+/* ─── Data Sources panel — exposes raw API payloads + per-source status / field list ─── */
+interface DataSourcesPanelProps {
+  ucl: { data: Record<string, unknown> | null; error: string | null };
+  cdr: { records: Array<Record<string, unknown>>; total: number };
+}
+
+function DataSourcesPanel({ ucl, cdr }: DataSourcesPanelProps) {
+  // Field summary helper — counts populated keys, returns sorted name list
+  function summariseFields(obj: Record<string, unknown> | null | undefined): { count: number; fields: string[] } {
+    if (!obj) return { count: 0, fields: [] };
+    const fields = Object.keys(obj).filter((k) => obj[k] !== null && obj[k] !== undefined && obj[k] !== "");
+    return { count: fields.length, fields: fields.sort() };
+  }
+  function valuePreview(v: unknown): string {
+    if (v === null || v === undefined) return "—";
+    if (typeof v === "object") return JSON.stringify(v).slice(0, 60);
+    const s = String(v);
+    return s.length > 60 ? s.slice(0, 60) + "…" : s;
+  }
+
+  const uclSummary = summariseFields(ucl.data);
+  const cdrSample = cdr.records[0] || null;
+  const cdrSummary = summariseFields(cdrSample);
+
+  const uclStatus: { label: string; color: string; bg: string } = ucl.error
+    ? { label: "Error", color: "text-fraud-red", bg: "bg-fraud-red-soft" }
+    : ucl.data
+    ? { label: `${uclSummary.count} field${uclSummary.count === 1 ? "" : "s"}`, color: "text-success", bg: "bg-success-soft" }
+    : { label: "No data", color: "text-muted-foreground", bg: "bg-muted" };
+
+  const cdrStatus: { label: string; color: string; bg: string } = cdr.total > 0
+    ? { label: `${cdr.total.toLocaleString()} record${cdr.total === 1 ? "" : "s"}`, color: "text-success", bg: "bg-success-soft" }
+    : { label: "No records", color: "text-muted-foreground", bg: "bg-muted" };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/70">Data Sources</p>
+
+      {/* UCL binding source */}
+      <details className="rounded-[8px] border border-border bg-background overflow-hidden group">
+        <summary className="cursor-pointer flex items-center gap-3 px-3 py-2 hover:bg-muted/30">
+          <span className="text-[12px] font-[600] text-foreground">UCL · QueryBindingRelationInfo</span>
+          <span className={cn("text-[10px] font-[700] rounded-[8px] px-1.5 py-0.5", uclStatus.color, uclStatus.bg)}>
+            {uclStatus.label}
+          </span>
+          <span className="text-[10px] font-[460] text-muted-foreground ml-auto">/api/ucl/device-info</span>
+        </summary>
+        <div className="px-3 py-3 border-t border-border bg-parchment/30 space-y-3">
+          {ucl.error && (
+            <p className="text-[12px] font-[460] text-fraud-red">{ucl.error}</p>
+          )}
+          {ucl.data && uclSummary.fields.length > 0 && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              {uclSummary.fields.map((k) => (
+                <div key={k} className="flex items-baseline gap-2 text-[11px] font-mono">
+                  <span className="font-[600] text-amethyst">{k}</span>
+                  <span className="text-foreground truncate">{valuePreview((ucl.data as Record<string, unknown>)[k])}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {ucl.data && (
+            <details>
+              <summary className="cursor-pointer text-[10px] font-[600] uppercase tracking-wider text-muted-foreground hover:text-foreground">
+                Raw JSON
+              </summary>
+              <pre className="mt-2 overflow-auto text-[11px] font-mono leading-relaxed text-foreground max-h-80 bg-background rounded-[8px] p-2 border border-border">
+                {JSON.stringify(ucl.data, null, 2)}
+              </pre>
+            </details>
+          )}
+          {!ucl.data && !ucl.error && (
+            <p className="text-[12px] font-[460] text-muted-foreground italic">No payload returned.</p>
+          )}
+        </div>
+      </details>
+
+      {/* OpenSearch CDR source */}
+      <details className="rounded-[8px] border border-border bg-background overflow-hidden">
+        <summary className="cursor-pointer flex items-center gap-3 px-3 py-2 hover:bg-muted/30">
+          <span className="text-[12px] font-[600] text-foreground">OpenSearch · CDR by IMEI</span>
+          <span className={cn("text-[10px] font-[700] rounded-[8px] px-1.5 py-0.5", cdrStatus.color, cdrStatus.bg)}>
+            {cdrStatus.label}
+          </span>
+          <span className="text-[10px] font-[460] text-muted-foreground ml-auto">logstash-cdr*</span>
+        </summary>
+        <div className="px-3 py-3 border-t border-border bg-parchment/30 space-y-3">
+          {cdrSample ? (
+            <>
+              <p className="text-[10px] font-[600] uppercase tracking-wider text-muted-foreground">
+                Sample record fields ({cdrSummary.count})
+              </p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {cdrSummary.fields.map((k) => (
+                  <div key={k} className="flex items-baseline gap-2 text-[11px] font-mono">
+                    <span className="font-[600] text-amethyst">{k}</span>
+                    <span className="text-foreground truncate">{valuePreview(cdrSample[k])}</span>
+                  </div>
+                ))}
+              </div>
+              <details>
+                <summary className="cursor-pointer text-[10px] font-[600] uppercase tracking-wider text-muted-foreground hover:text-foreground">
+                  Raw record
+                </summary>
+                <pre className="mt-2 overflow-auto text-[11px] font-mono leading-relaxed text-foreground max-h-80 bg-background rounded-[8px] p-2 border border-border">
+                  {JSON.stringify(cdrSample, null, 2)}
+                </pre>
+              </details>
+            </>
+          ) : (
+            <p className="text-[12px] font-[460] text-muted-foreground italic">No CDR records returned for this IMEI in the selected date range.</p>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+/* ─── Shipping tracking — outbound + return legs for rental orders ─── */
+function carrierTrackUrl(carrier: string, tracking: string): string | null {
+  if (!tracking) return null;
+  const c = carrier.toUpperCase().trim();
+  const t = encodeURIComponent(tracking);
+  if (c === "UPS") return `https://www.ups.com/track?loc=en_US&tracknum=${t}`;
+  if (c === "FEDEX") return `https://www.fedex.com/fedextrack/?trknbr=${t}`;
+  if (c === "USPS") return `https://tools.usps.com/go/TrackConfirmAction?qtc_tLabels1=${t}`;
+  if (c === "DHL") return `https://www.dhl.com/en/express/tracking.html?AWB=${t}`;
+  return null;
+}
+
+function TrackingLegRow({
+  direction, carrier, tracking, isFirst, isLast,
+}: {
+  direction: "outbound" | "return";
+  carrier?: string;
+  tracking?: string;
+  isFirst?: boolean;
+  isLast?: boolean;
+}) {
+  const isOutbound = direction === "outbound";
+  const label = isOutbound ? "Outbound" : "Return";
+  const url = carrier && tracking ? carrierTrackUrl(carrier, tracking) : null;
+  const hasData = !!(carrier || tracking);
+
+  return (
+    <div className="relative flex items-start gap-3 py-3">
+      {/* Timeline rail — dot for this leg, line connecting to the next */}
+      <div className="relative flex flex-col items-center w-4 shrink-0 self-stretch">
+        {!isFirst && <div className="absolute top-0 h-2.5 w-px bg-parchment" />}
+        <div className={cn(
+          "mt-1.5 h-2 w-2 rounded-full border-2",
+          hasData ? "border-charcoal bg-charcoal" : "border-charcoal/30 bg-background"
+        )} />
+        {!isLast && <div className="absolute top-5 bottom-0 w-px bg-parchment" />}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-[13px] font-[540] text-charcoal">{label}</span>
+          {carrier && (
+            <span className="text-[10px] font-[700] uppercase tracking-wider rounded-[8px] bg-parchment text-charcoal px-1.5 py-0.5">
+              {carrier}
+            </span>
+          )}
+        </div>
+        {hasData ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            {tracking ? (
+              <code className="text-[13px] font-mono font-[460] text-charcoal tabular-nums">
+                {tracking}
+              </code>
+            ) : (
+              <span className="text-[13px] font-[460] text-charcoal/50">Pending</span>
+            )}
+          </div>
+        ) : (
+          <span className="text-[13px] font-[460] text-charcoal/50">
+            {isOutbound ? "Not yet shipped" : "Return label not issued"}
+          </span>
+        )}
+      </div>
+
+      {url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-[13px] font-[600] rounded-[8px] bg-cream text-charcoal hover:opacity-90 px-3 py-1.5 transition-opacity shrink-0 self-start"
+          aria-label={`Track ${label.toLowerCase()} shipment on ${carrier} in a new tab`}
+        >
+          Track <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2} />
+        </a>
+      )}
+    </div>
+  );
+}
+
+function TrackingSection({ tracking }: { tracking: NonNullable<Order["tracking_information"]> }) {
+  // Rendered inline inside the Fulfillment card — no outer border/radius to avoid
+  // double-card nesting. The parent card provides the container.
+  return (
+    <div>
+      <div className="flex items-center justify-between pb-2">
+        <p className="text-[11px] font-[600] uppercase tracking-wider text-charcoal/60 flex items-center gap-1.5">
+          <Truck className="h-3 w-3" strokeWidth={1.8} />
+          Shipment Tracking
+        </p>
+        {tracking.length > 1 && (
+          <span className="text-[11px] font-[460] text-charcoal/60">
+            {tracking.length} devices
+          </span>
+        )}
+      </div>
+
+      <div className="divide-y divide-parchment/60">
+        {tracking.map((t, i) => {
+          const serial = t.device_serial !== undefined ? String(t.device_serial) : "";
+          return (
+            <div key={t.fulfillment_id ? String(t.fulfillment_id) : i} className="py-1">
+              {serial && tracking.length > 1 && (
+                <div className="flex items-center gap-2 pb-1">
+                  <span className="text-[10px] font-[600] uppercase tracking-wider text-charcoal/50">Device</span>
+                  <code className="text-[12px] font-mono font-[460] text-charcoal">{serial}</code>
+                </div>
+              )}
+              <div>
+                <TrackingLegRow
+                  direction="outbound"
+                  carrier={t.shipping_carrier}
+                  tracking={t.shipping_tracking_number}
+                  isFirst
+                />
+                <TrackingLegRow
+                  direction="return"
+                  carrier={t.return_carrier}
+                  tracking={t.return_tracking_number}
+                  isLast
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Per-plan breakdown — UCL offers with source (Purchased / Pre-loaded) ─── */
+interface SapphirePlansListProps {
+  offers: Array<Record<string, unknown>>;
+  allOrders: Order[];
+  selectedPackageSku?: string;
+  filterToCustomer?: boolean;
+}
+
+function SapphirePlansList({ offers, allOrders, selectedPackageSku, filterToCustomer }: SapphirePlansListProps) {
+  if (!offers || offers.length === 0) {
+    return (
+      <div className="rounded-[8px] border border-dashed border-border bg-muted/10 px-4 py-6 text-center">
+        <p className="text-[12px] font-[460] text-muted-foreground">
+          No UCL offers returned yet. Plan details will appear here once the device-info call succeeds.
+        </p>
+      </div>
+    );
+  }
+
+  // Pair each offer with its matching storefront order.
+  // For rentals (filterToCustomer=true): the IMEI recycles across renters and plan SKUs
+  // repeat, so SKU alone is ambiguous — require the offer's effectiveTime to fall inside
+  // the order's trip window. For non-rentals: SKU match alone is sufficient.
+  // allOrders is scoped to the current customer's email, so any match means the offer belongs to this customer.
+  const paired = offers.map((offer) => {
+    const goodsCode = (offer.goodsCode as string | undefined) || "";
+    const effMs = Number(offer.effectiveTime || 0);
+
+    const matchingOrder = allOrders.find((o) => {
+      if (!filterToCustomer) {
+        return goodsCode
+          ? o.order_details_data?.some((d) => d.package_sku === goodsCode)
+          : false;
+      }
+      const line = o.order_details_data?.find((d) => d.trip_start || d.trip_end);
+      const startMs = line?.trip_start ? new Date(line.trip_start).getTime() : 0;
+      const endMs = line?.trip_end ? new Date(line.trip_end).getTime() : 0;
+      return startMs > 0 && endMs > 0 && effMs >= startMs && effMs <= endMs;
+    });
+
+    return { offer, matchingOrder };
+  });
+
+  // Rentals: IMEI recycles through the fleet, so drop offers not tied to any of this customer's orders.
+  const visible = filterToCustomer ? paired.filter((p) => p.matchingOrder) : paired;
+
+  // Newest first
+  const sorted = [...visible].sort((a, b) => {
+    const ae = (a.offer.effectiveTime as number) || 0;
+    const be = (b.offer.effectiveTime as number) || 0;
+    return be - ae;
+  });
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/70">
+        Plans ({sorted.length})
+      </p>
+      <div className="space-y-2">
+        {sorted.map(({ offer, matchingOrder }, i) => {
+          const goodsCode = (offer.goodsCode as string | undefined) || "";
+          return (
+            <SapphirePlanRow
+              key={(offer.relationId as string) || (offer.orderId as string) || i}
+              offer={offer}
+              matchingOrder={matchingOrder}
+              isSelected={!!selectedPackageSku && goodsCode === selectedPackageSku}
+              isRental={!!filterToCustomer}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SapphirePlanRow({
+  offer, matchingOrder, isSelected, isRental,
+}: {
+  offer: Record<string, unknown>;
+  matchingOrder: Order | undefined;
+  isSelected: boolean;
+  isRental?: boolean;
+}) {
+  const cap = Number(offer.flowByte || 0);              // MB, per UCL spec
+  const remaining = Number(offer.surplusFlowbyte || 0); // MB
+  const usedMb = Math.max(cap - remaining, 0);
+  const usedPct = cap > 0 ? Math.min((usedMb / cap) * 100, 100) : 0;
+  const isUnlimited = (offer.attrMap as Record<string, unknown> | undefined)?.infiniFlag === "true";
+
+  const status = (offer.status as string) || "";
+  const statusMeta = sapphirePlanStatusMeta(status);
+  // Rental plans are removed from the device when the trip ends, so flowByte/surplus go to 0.
+  // Treat EXPIRE/USE_END/UNSUBSCRIBE as "plan no longer on device" — hide misleading 0 MB / 0 MB counters.
+  const isRentalExpired = isRental && (status === "EXPIRE" || status === "INVALID" || status === "USE_END" || status === "UNSUBSCRIBE");
+
+  const attrMap = (offer.attrMap as Record<string, unknown> | undefined) || {};
+  const pkType = attrMap.pkType as string | undefined;
+  const source = sapphirePlanSource(pkType, offer.orderId as string | null | undefined);
+
+  const goodsCode = (offer.goodsCode as string) || "";
+  const goodsName = (offer.goodsName as string) || goodsCode || "Plan";
+  const parsed = parsePlanSku(goodsCode);
+  const flag = parsed ? getCountryFlag(parsed.countryCode) : "";
+
+  // Plan duration — prefer UCL attrMap.period (more reliable), fall back to parsed SKU.
+  const periodRaw = attrMap.period ? Number(attrMap.period) : parsed?.days || 0;
+  const periodUnit = (attrMap.periodUnit as string) || "DAY";
+  const periodLabel = periodRaw > 0
+    ? (periodUnit === "MONTH" ? `${periodRaw} mo` : `${periodRaw} day${periodRaw === 1 ? "" : "s"}`)
+    : "";
+
+  const effMs = Number(offer.effectiveTime || 0);
+  const expMs = Number(offer.expiryTime || 0);
+  const expiresIn = expMs > 0 ? daysUntilDisplay(new Date(expMs).toISOString()) : "—";
+
+  const orderNumber = matchingOrder?.order_number;
+
+  const StatusIcon = statusMeta.icon;
+
+  return (
+    <div
+      className={cn(
+        "rounded-[8px] border bg-background px-4 py-3 transition-colors",
+        isSelected ? "border-amethyst shadow-sm" : "border-border",
+        status === "USE_END" || status === "EXPIRE" ? "opacity-75" : ""
+      )}
+    >
+      <div className="flex items-start gap-3">
+        {/* Left: title + country */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {flag && <span className="text-[14px]" aria-hidden>{flag}</span>}
+            <p className="text-[14px] font-[540] text-foreground truncate">{goodsName}</p>
+            {isSelected && (
+              <span className="text-[10px] font-[700] uppercase tracking-wider rounded-[8px] bg-amethyst/10 text-amethyst px-1.5 py-0.5">
+                Selected order
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 text-[10px] font-[700] uppercase tracking-wider rounded-[8px] px-1.5 py-0.5",
+                statusMeta.bg,
+                statusMeta.color
+              )}
+            >
+              <StatusIcon className="h-3 w-3" strokeWidth={2} />
+              {statusMeta.label}
+            </span>
+            <span
+              className={cn(
+                "text-[10px] font-[700] uppercase tracking-wider rounded-[8px] px-1.5 py-0.5",
+                source.bg,
+                source.color
+              )}
+              title={source.tooltip}
+            >
+              {source.label}
+            </span>
+            {orderNumber && (
+              <span
+                className="text-[10px] font-[600] font-mono rounded-[8px] bg-muted text-foreground px-1.5 py-0.5"
+                title="Matching storefront order"
+              >
+                {orderNumber}
+              </span>
+            )}
+            {!orderNumber && source.label === "Purchased" && (
+              <span
+                className="text-[10px] font-[600] uppercase tracking-wider rounded-[8px] bg-fraud-yellow-soft text-fraud-yellow px-1.5 py-0.5"
+                title="UCL shows a purchase but we have no matching order in OpenSearch"
+              >
+                No OS match
+              </span>
+            )}
+            {periodLabel && (
+              <span className="text-[11px] font-[460] text-muted-foreground">{periodLabel}</span>
+            )}
+            {effMs > 0 && expMs > 0 && (
+              <span className="text-[11px] font-[460] text-muted-foreground">
+                {formatDate(new Date(effMs).toISOString())} → {formatDate(new Date(expMs).toISOString())}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Right: numbers. Rental FUP plans give {dataGB} GB/day at full speed; throttled after.
+            Once the trip ends, UCL zeros out flowByte so we show "Expired" instead of 0 MB / 0 MB. */}
+        <div className="text-right shrink-0">
+          {isRentalExpired ? (
+            <p className="text-[14px] font-[600] text-muted-foreground">Expired</p>
+          ) : isRental && !isUnlimited && parsed?.dataGB ? (
+            <>
+              <p className="text-[14px] font-[600] font-mono text-foreground tabular-nums">
+                {parsed.dataGB} GB<span className="text-[11px] font-[460] text-muted-foreground">/day</span>
+              </p>
+              <p className="text-[10px] font-[500] uppercase tracking-wider text-muted-foreground mt-0.5">
+                FUP · reduced speed after cap
+              </p>
+            </>
+          ) : (
+            <p className="text-[14px] font-[600] font-mono text-foreground tabular-nums">
+              {isUnlimited ? "Unlimited" : `${formatMb(usedMb)} / ${formatMb(cap)}`}
+            </p>
+          )}
+          {!isRentalExpired && (
+            <p className="text-[11px] font-[460] text-muted-foreground mt-0.5">
+              {status === "IN_USING" ? expiresIn : status === "USE_END" ? "Depleted" : statusMeta.label}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Progress bar — hide for rentals (per-day FUP, not a single bucket) and for expired plans */}
+      {!isUnlimited && !isRental && !isRentalExpired && cap > 0 && (
+        <div
+          className="h-1.5 rounded-full bg-parchment overflow-hidden mt-3"
+          role="progressbar"
+          aria-label={`${usedPct.toFixed(0)}% of ${goodsName} used`}
+          aria-valuenow={Math.round(usedPct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className={cn(
+              "h-full rounded-full transition-all duration-300 ease-out",
+              status === "USE_END" ? "bg-muted-foreground/40"
+                : usedPct >= 90 ? "bg-fraud-red"
+                : usedPct >= 75 ? "bg-fraud-yellow"
+                : "bg-lavender"
+            )}
+            style={{ width: `${usedPct}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function sapphirePlanStatusMeta(status: string): {
+  label: string;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  color: string;
+  bg: string;
+} {
+  switch (status) {
+    case "IN_USING":
+    case "VALID":
+      return { label: "Active", icon: CheckCircle2, color: "text-success", bg: "bg-success-soft" };
+    case "NOT_ACTIVATED":
+      return { label: "Pending", icon: Clock, color: "text-fraud-yellow", bg: "bg-fraud-yellow-soft" };
+    case "USE_END":
+      return { label: "Depleted", icon: XCircle, color: "text-muted-foreground", bg: "bg-muted" };
+    case "EXPIRE":
+    case "INVALID":
+      // UCL returns INVALID once a rental plan has been removed from the device (post-trip teardown).
+      // Functionally identical to EXPIRE from a support perspective.
+      return { label: "Expired", icon: Clock, color: "text-muted-foreground", bg: "bg-muted" };
+    case "UNSUBSCRIBE":
+      return { label: "Unsubscribed", icon: XCircle, color: "text-muted-foreground", bg: "bg-muted" };
+    case "TRANSFER":
+      return { label: "Transferred", icon: AlertCircle, color: "text-amethyst", bg: "bg-lavender/10" };
+    default:
+      return { label: status || "Unknown", icon: AlertCircle, color: "text-muted-foreground", bg: "bg-muted" };
+  }
+}
+
+function sapphirePlanSource(pkType: string | undefined, orderId: string | null | undefined): {
+  label: string;
+  color: string;
+  bg: string;
+  tooltip: string;
+} {
+  // CSTC = factory / pre-loaded allowance. Never has a sale behind it.
+  if (pkType === "CSTC" || !orderId) {
+    return {
+      label: "Pre-loaded",
+      color: "text-amethyst",
+      bg: "bg-lavender/10",
+      tooltip: "Factory-bundled allowance (no purchase). Activates automatically.",
+    };
+  }
+  // SWTC = normal storefront sale.
+  return {
+    label: "Purchased",
+    color: "text-success",
+    bg: "bg-success-soft",
+    tooltip: "Sold through our storefront. Expect a matching order in OpenSearch.",
+  };
+}
+
+/** Format UCL flowByte (which is MB, not bytes) into GB/MB display. */
+function formatMb(mb: number): string {
+  if (!mb || mb <= 0) return "0 MB";
+  if (mb >= 1024) return `${(mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 2)} GB`;
+  return `${mb.toFixed(mb < 10 ? 2 : 0)} MB`;
+}
+
+/* ─── Stacked daily-usage chart, colored by plan (recharts) ─── */
+// Chart palette — all derived from design.md brand tokens and picked so each
+// fill + stroke pair meets WCAG 3:1 for graphical elements on a white surface.
+// Order matches visual priority: newest plan (usually the current one) gets the
+// strongest colour; depleted/historical plans recede.
+const PLAN_COLOR_HEX = [
+  "#714cb6", // 1 · Amethyst Link — vivid brand purple, high contrast
+  "#1b1938", // 2 · Mysteria — near-black purple for the deepest emphasis
+  "#a88dd6", // 3 · Mid-lavender (interpolated between amethyst & lavender)
+  "#4a3575", // 4 · Dark plum (interpolated between mysteria & amethyst)
+  "#cbb7fb", // 5 · Lavender Glow — softer tint, always paired with the darker stroke
+];
+const UNMATCHED_HEX = "#7c7770"; // Warm charcoal-gray for unaligned sessions
+
+/**
+ * Rental daily FUP chart — stacked bars per day showing full-speed (≤ daily cap) vs throttled (over cap).
+ * Rental plans reset data at midnight; cap is the SKU's dataGB. Use for rentals only.
+ */
+function RentalDailyFupChart({
+  cdrRecords, dailyCapGb, tripStart, tripEnd,
+}: {
+  cdrRecords: Array<Record<string, unknown>>;
+  dailyCapGb: number;
+  tripStart?: string;
+  tripEnd?: string;
+}) {
+  const capMb = dailyCapGb > 0 ? dailyCapGb * 1024 : 0;
+
+  const byDay = new Map<string, number>();
+  for (const rec of cdrRecords) {
+    const tsStr = (rec["@timestamp"] as string) || (rec["USAGE_DATE_UTC"] as string) || "";
+    if (!tsStr) continue;
+    const dayKey = tsStr.slice(0, 10);
+    const bytes = Number(rec["TOTAL_QTY"] || rec["flowsize"] || 0);
+    if (!bytes) continue;
+    byDay.set(dayKey, (byDay.get(dayKey) || 0) + bytes / 1_048_576);
+  }
+
+  // Pad range to full trip so empty days render as zero bars.
+  const startDay = tripStart ? tripStart.slice(0, 10) : (byDay.size ? [...byDay.keys()].sort()[0] : "");
+  const endDay = tripEnd ? tripEnd.slice(0, 10) : (byDay.size ? [...byDay.keys()].sort().slice(-1)[0] : "");
+  if (!startDay || !endDay) {
+    return (
+      <p className="text-[12px] font-[460] text-muted-foreground py-6 text-center">
+        No trip window set — cannot render daily FUP chart.
+      </p>
+    );
+  }
+
+  const days: string[] = [];
+  for (let d = new Date(startDay); d <= new Date(endDay); d.setUTCDate(d.getUTCDate() + 1)) {
+    days.push(d.toISOString().slice(0, 10));
+  }
+  const data = days.map((day) => {
+    const totalMb = byDay.get(day) || 0;
+    const fullMb = capMb > 0 ? Math.min(totalMb, capMb) : totalMb;
+    const overMb = capMb > 0 ? Math.max(totalMb - capMb, 0) : 0;
+    return { day, fullMb: Math.round(fullMb), overMb: Math.round(overMb) };
+  });
+
+  return <RentalFupCanvas data={data} capMb={capMb} />;
+}
+
+function RentalFupCanvas({
+  data, capMb,
+}: {
+  data: Array<{ day: string; fullMb: number; overMb: number }>;
+  capMb: number;
+}) {
+  const Recharts = useRechartsLazy();
+  if (!Recharts) {
+    return (
+      <div className="h-64 flex items-center justify-center text-[12px] font-[460] text-muted-foreground">
+        Loading chart…
+      </div>
+    );
+  }
+  const { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ReferenceLine } = Recharts;
+  const fmtDay = (d: string) => {
+    const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const dt = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(d);
+    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+  const fmtMb = (mb: number) => mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${Math.round(mb)} MB`;
+
+  return (
+    <div className="h-64 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#dcd7d3" />
+          <XAxis dataKey="day" tickFormatter={fmtDay} tick={{ fontSize: 11, fill: "#7a6e99" }} />
+          <YAxis tickFormatter={fmtMb} tick={{ fontSize: 11, fill: "#7a6e99" }} width={60} />
+          <Tooltip
+            formatter={((v: unknown, name: unknown) => [fmtMb(Number(v) || 0), name === "fullMb" ? "Full speed" : "Throttled"]) as never}
+            labelFormatter={((d: unknown) => fmtDay(String(d ?? ""))) as never}
+            contentStyle={{ fontSize: 12, borderRadius: 8 }}
+          />
+          <Legend
+            verticalAlign="bottom"
+            wrapperStyle={{ paddingTop: 8, fontSize: 11 }}
+            formatter={(v: string) => v === "fullMb" ? "Full speed (≤ daily cap)" : "Throttled (over cap)"}
+          />
+          {capMb > 0 && (
+            <ReferenceLine y={capMb} stroke="#b3a0d9" strokeDasharray="4 4" label={{ value: `Cap: ${fmtMb(capMb)}`, fontSize: 10, fill: "#7a6e99", position: "right" }} />
+          )}
+          <Bar dataKey="fullMb" stackId="a" fill="#6b46c1" radius={[0, 0, 0, 0]} />
+          <Bar dataKey="overMb" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function SapphireUsagePerPlanChart({
+  cdrRecords,
+  offers,
+}: {
+  cdrRecords: Array<Record<string, unknown>>;
+  offers: Array<Record<string, unknown>>;
+}) {
+  if (!cdrRecords || cdrRecords.length === 0) {
+    return (
+      <p className="text-[12px] font-[460] text-muted-foreground py-6 text-center">
+        No usage recorded for this IMEI in the selected range.
+      </p>
+    );
+  }
+
+  // Plan index — newest first, each gets a stable palette slot
+  const planIndex = [...offers]
+    .sort((a, b) => Number(b.effectiveTime || 0) - Number(a.effectiveTime || 0))
+    .map((o, i) => {
+      const goodsCode = (o.goodsCode as string) || "";
+      const pretty = (o.goodsName as string) || goodsCode || `Plan ${i + 1}`;
+      return {
+        key: goodsCode || `offer-${i}`,
+        label: pretty,
+        effMs: Number(o.effectiveTime || 0),
+        expMs: Number(o.expiryTime || 0),
+        color: PLAN_COLOR_HEX[i % PLAN_COLOR_HEX.length],
+      };
+    });
+
+  function matchPlan(tsMs: number): { key: string; label: string; color: string } {
+    for (const p of planIndex) {
+      if (p.effMs && p.expMs && tsMs >= p.effMs && tsMs <= p.expMs) {
+        return { key: p.key, label: p.label, color: p.color };
+      }
+    }
+    return { key: "unmatched", label: "Unmatched", color: UNMATCHED_HEX };
+  }
+
+  // Aggregate per-day per-plan MB (recharts wants one object per X tick,
+  // with each series as a property).
+  const byDay = new Map<string, Record<string, number>>();
+  const seriesMap = new Map<string, { key: string; label: string; color: string; totalMb: number }>();
+
+  for (const rec of cdrRecords) {
+    const tsStr = (rec["@timestamp"] as string) || (rec["USAGE_DATE_UTC"] as string) || "";
+    if (!tsStr) continue;
+    const dt = new Date(tsStr);
+    if (isNaN(dt.getTime())) continue;
+    const dayKey = tsStr.slice(0, 10);
+    const bytes = Number(rec["TOTAL_QTY"] || rec["flowsize"] || 0);
+    if (!bytes) continue;
+    const mb = bytes / 1_048_576;
+    const match = matchPlan(dt.getTime());
+
+    if (!byDay.has(dayKey)) byDay.set(dayKey, {});
+    const row = byDay.get(dayKey)!;
+    row[match.key] = (row[match.key] || 0) + mb;
+
+    const existing = seriesMap.get(match.key);
+    if (existing) existing.totalMb += mb;
+    else seriesMap.set(match.key, { key: match.key, label: match.label, color: match.color, totalMb: mb });
+  }
+
+  if (byDay.size === 0) {
+    return (
+      <p className="text-[12px] font-[460] text-muted-foreground py-6 text-center">
+        No usage recorded for this IMEI in the selected range.
+      </p>
+    );
+  }
+
+  // Fill gaps: continuous date range so the chart doesn't skip days
+  const allDays = [...byDay.keys()].sort();
+  const start = new Date(allDays[0]);
+  const end = new Date(allDays[allDays.length - 1]);
+  const filled: string[] = [];
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    filled.push(d.toISOString().slice(0, 10));
+  }
+
+  const series = [...seriesMap.values()].sort((a, b) => b.totalMb - a.totalMb);
+  const chartData = filled.map((day) => {
+    const row: Record<string, string | number> = { day };
+    for (const s of series) row[s.key] = byDay.get(day)?.[s.key] || 0;
+    return row;
+  });
+
+  return (
+    <SapphireUsageChartCanvas
+      data={chartData}
+      series={series}
+    />
+  );
+}
+
+function SapphireUsageChartCanvas({
+  data,
+  series,
+}: {
+  data: Array<Record<string, string | number>>;
+  series: Array<{ key: string; label: string; color: string; totalMb: number }>;
+}) {
+  // Dynamic import keeps the recharts bundle out of the main page chunk
+  const Recharts = useRechartsLazy();
+  if (!Recharts) {
+    return (
+      <div className="h-64 flex items-center justify-center text-[12px] font-[460] text-muted-foreground">
+        Loading chart…
+      </div>
+    );
+  }
+  const { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, Legend } = Recharts;
+
+  const fmtMb = (mb: number) => {
+    if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+    if (mb >= 1) return `${mb.toFixed(0)} MB`;
+    return `${mb.toFixed(2)} MB`;
+  };
+
+  return (
+    <div>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              {series.map((s) => (
+                <linearGradient key={s.key} id={`grad-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={s.color} stopOpacity={0.9} />
+                  <stop offset="100%" stopColor={s.color} stopOpacity={0.55} />
+                </linearGradient>
+              ))}
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#dcd7d3" vertical={false} />
+            <XAxis
+              dataKey="day"
+              tick={{ fontSize: 11, fill: "#292827", fontWeight: 460 }}
+              tickFormatter={(d: string) => d.slice(5)}
+              tickLine={false}
+              axisLine={{ stroke: "#e7e4dd" }}
+              minTickGap={20}
+            />
+            <YAxis
+              tick={{ fontSize: 11, fill: "#292827", fontWeight: 460 }}
+              tickFormatter={(mb: number) => fmtMb(mb)}
+              tickLine={false}
+              axisLine={false}
+              width={56}
+            />
+            <Tooltip
+              contentStyle={{
+                borderRadius: 8,
+                border: "1px solid #e7e4dd",
+                background: "#ffffff",
+                fontSize: 12,
+                fontWeight: 460,
+                padding: 8,
+              }}
+              labelStyle={{ fontWeight: 600, color: "#2d1b5b", marginBottom: 4 }}
+              formatter={(value, name) => {
+                const match = series.find((s) => s.key === String(name));
+                return [fmtMb(Number(value) || 0), match?.label || String(name)];
+              }}
+              labelFormatter={(d) => String(d ?? "")}
+            />
+            {series.map((s) => (
+              <Area
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                stackId="1"
+                name={s.key}
+                // Always stroke in the darker Mysteria tone so pale fills stay legible on white
+                stroke="#1b1938"
+                strokeWidth={1.25}
+                strokeOpacity={0.7}
+                fill={`url(#grad-${s.key})`}
+                activeDot={{ r: 3, fill: s.color, stroke: "#1b1938", strokeWidth: 1 }}
+                isAnimationActive
+                animationDuration={300}
+              />
+            ))}
+            <Legend
+              verticalAlign="bottom"
+              iconType="circle"
+              wrapperStyle={{ paddingTop: 12, fontSize: 11 }}
+              formatter={(value: string) => {
+                const match = series.find((s) => s.key === value);
+                return (
+                  <span style={{ color: "#2d1b5b", fontWeight: 540 }}>
+                    {match?.label || value}
+                  </span>
+                );
+              }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+/** Lazy-load recharts on the client only (avoids SSR bundle bloat). */
+type RechartsModule = typeof import("recharts");
+function useRechartsLazy(): RechartsModule | null {
+  const [mod, setMod] = useState<RechartsModule | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    import("recharts").then((m) => {
+      if (mounted) setMod(m);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  return mod;
+}
+
+/* ─── Sapphire / Rental device card — renders UCL device info + IMEI usage history ─── */
+interface SapphireDeviceCardProps {
+  imei: string;
+  deviceInfo: Record<string, unknown> | null;
+  deviceInfoError: string | null;
+  userOffers: Array<Record<string, unknown>>;
+  allOrders: Order[];
+  cdrRecords: Array<Record<string, unknown>>;
+  cdrTotal: number;
+  dailyUsage: Array<{ date: string; bytes: number; country: string; sessions: number }>;
+  packageSku: string;
+  tripStart?: string;
+  tripEnd?: string;
+  orderCreatedAt?: string | number;
+  productType: "esim" | "rental" | "sapphire" | "unknown";
+  onCopy: (value: string) => void;
+  copied: boolean;
+}
+
+function SapphireDeviceCard({
+  imei, deviceInfo, deviceInfoError, userOffers, allOrders, cdrRecords, cdrTotal, dailyUsage,
+  packageSku, tripStart, tripEnd, orderCreatedAt, productType, onCopy, copied,
+}: SapphireDeviceCardProps) {
+  const parsed = parsePlanSku(packageSku);
+  const flag = parsed ? getCountryFlag(parsed.countryCode) : "";
+
+  // UCL QueryBindingRelationInfo returns TerminalActivationVo (spec §5.6.5):
+  //   id, customerId, customerName, imei, createTime (ms GMT0),
+  //   status (BINDING|BINDED), isLocked (bool), terminalType (eg G2, E1).
+  // Firmware version and full model name are NOT exposed by this endpoint.
+  const terminalType = (deviceInfo?.terminalType as string) || "";
+  const deviceName = getSapphireDeviceName({ terminalType, imei });
+  const model = deviceName.name;
+  const bindingStatusRaw = (deviceInfo?.status as string) || "";
+  const bindingStatus =
+    bindingStatusRaw === "BINDED" ? "Active (used MiFi)"
+    : bindingStatusRaw === "BINDING" ? "Paired (not yet used)"
+    : bindingStatusRaw;
+  const isLocked = deviceInfo?.isLocked === true;
+  const subUser = (deviceInfo?.customerName as string) || (deviceInfo?.customerId as string) || "";
+  const createTimeMs = typeof deviceInfo?.createTime === "number"
+    ? (deviceInfo.createTime as number)
+    : deviceInfo?.createTime ? Number(deviceInfo.createTime) : 0;
+  const activationAt = createTimeMs > 0
+    ? new Date(createTimeMs).toISOString()
+    : (orderCreatedAt ? new Date(
+        typeof orderCreatedAt === "number"
+          ? (orderCreatedAt > 1e12 ? orderCreatedAt : orderCreatedAt * 1000)
+          : orderCreatedAt
+      ).toISOString() : "");
+
+  // Remaining days — prefer trip_end when rental has one, else derive from plan duration + activation
+  const expiryRef = tripEnd || (parsed?.days && activationAt
+    ? new Date(new Date(activationAt).getTime() + parsed.days * 86400000).toISOString()
+    : null);
+  const remaining = expiryRef ? daysUntil(expiryRef) : null;
+
+  const totalBytes = dailyUsage.reduce((s, d) => s + d.bytes, 0);
+  const planBytes = parsed?.unlimited ? 0 : (parsed?.dataGB || 0) * 1_073_741_824;
+  const usagePct = planBytes > 0 ? Math.min((totalBytes / planBytes) * 100, 100) : 0;
+
+  // Rental-only: restrict CDR and usage to this order's trip window so prior renters' activity doesn't bleed in.
+  const isRental = productType === "rental";
+  const tripStartMs = tripStart ? new Date(tripStart).getTime() : 0;
+  const tripEndMs = tripEnd ? new Date(tripEnd).getTime() + 86_400_000 - 1 : 0; // include full end day
+  const tripScopedCdr = (isRental && tripStartMs > 0 && tripEndMs > 0)
+    ? cdrRecords.filter((r) => {
+        const d = r["USAGE_DATE_UTC"];
+        const t = typeof d === "string" ? new Date(d).getTime() : typeof d === "number" ? d : 0;
+        return t >= tripStartMs && t <= tripEndMs;
+      })
+    : cdrRecords;
+  const tripUsageBytes = isRental
+    ? tripScopedCdr.reduce((s, r) => s + Number(r["TOTAL_QTY"] || r["flowsize"] || r["TOTAL_BYTES"] || 0), 0)
+    : totalBytes;
+  const tripDays = (tripStartMs && tripEndMs)
+    ? Math.max(1, Math.round((tripEndMs - tripStartMs) / 86_400_000))
+    : 0;
+
+  return (
+    <Card className="rounded-[16px] bg-lavender/5 border-lavender/20">
+      <CardHeader className="pb-4">
+        <div className="flex items-start gap-4 flex-wrap">
+          {/* Thumbnail (or placeholder) */}
+          <div className="h-16 w-16 shrink-0 rounded-[8px] border border-lavender/30 bg-background overflow-hidden flex items-center justify-center">
+            {deviceName.imageUrl ? (
+              // Plain <img> on purpose — operator-provided URLs don't need next/image's domain allowlist
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={deviceName.imageUrl}
+                alt={deviceName.name}
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <Smartphone className="h-7 w-7 text-amethyst/50" strokeWidth={1.6} />
+            )}
+          </div>
+
+          {/* Title block */}
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-[600] uppercase tracking-wider text-amethyst/70">Sapphire Device</p>
+            <h3 className="text-[16px] font-[540] text-foreground truncate">{deviceName.name}</h3>
+            {packageSku && (
+              <p className="text-[12px] font-[460] text-muted-foreground mt-0.5 truncate">
+                {flag && <span className="mr-1">{flag}</span>}
+                {formatPlanDisplay(packageSku)}
+              </p>
+            )}
+
+            {/* Status pills */}
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              {bindingStatus && (
+                <span className={cn(
+                  "text-[10px] font-[700] uppercase tracking-wider rounded-[8px] px-1.5 py-0.5",
+                  bindingStatusRaw === "BINDED" ? "bg-success-soft text-success" : "bg-lavender/20 text-amethyst"
+                )}>
+                  {bindingStatus}
+                </span>
+              )}
+              {isLocked && (
+                <span className="text-[10px] font-[700] uppercase tracking-wider rounded-[8px] bg-fraud-yellow-soft text-fraud-yellow px-1.5 py-0.5">
+                  Locked
+                </span>
+              )}
+              {terminalType && (
+                <span className="text-[10px] font-[600] font-mono rounded-[8px] bg-muted text-muted-foreground px-1.5 py-0.5">
+                  {terminalType}
+                </span>
+              )}
+              {deviceName.source === "fallback" && deviceName.code && (
+                <span
+                  className="text-[10px] font-[600] uppercase tracking-wider rounded-[8px] bg-muted text-muted-foreground/80 px-1.5 py-0.5"
+                  title={`Add a Sapphire mapping for ${deviceName.code} in Settings → Sapphire Devices`}
+                >
+                  unmapped
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Right-rail: IMEI + customer + actions */}
+          <div className="flex flex-col items-end gap-2 min-w-[200px]">
+            <button
+              onClick={() => onCopy(imei)}
+              className="flex items-center gap-2 rounded-[8px] border border-lavender/40 bg-background px-3 py-2 text-[12px] font-mono font-[600] text-foreground hover:bg-lavender/10 cursor-pointer"
+              aria-label={`Copy IMEI ${imei}`}
+            >
+              <span>IMEI: {imei}</span>
+              {copied ? (
+                <span className="text-[11px] font-[600] text-success">Copied!</span>
+              ) : (
+                <Copy className="h-3 w-3 opacity-60" strokeWidth={1.8} />
+              )}
+            </button>
+            {subUser && (
+              <p
+                className="text-[11px] font-[460] font-mono text-muted-foreground truncate max-w-[260px]"
+                title={subUser}
+              >
+                {subUser}
+              </p>
+            )}
+            {(deviceName.setupGuideUrl || deviceName.troubleshootingUrl) && (
+              <div className="flex items-center gap-1.5">
+                {deviceName.setupGuideUrl && (
+                  <a
+                    href={deviceName.setupGuideUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-[600] rounded-[8px] border border-lavender/40 bg-background hover:bg-lavender/10 text-amethyst px-2 py-1 cursor-pointer transition-colors"
+                  >
+                    Setup guide ↗
+                  </a>
+                )}
+                {deviceName.troubleshootingUrl && (
+                  <a
+                    href={deviceName.troubleshootingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-[600] rounded-[8px] border border-lavender/40 bg-background hover:bg-lavender/10 text-amethyst px-2 py-1 cursor-pointer transition-colors"
+                  >
+                    Troubleshooting ↗
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Header summary — rentals show trip-scoped numbers; Sapphire/owned show fleet-wide. */}
+        {isRental ? (
+          // Trip window lives in Order Summary — avoid duplicating it here. Show only the
+          // plan daily cap and the trip-scoped usage, which are specific to the plan card.
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Plan</p>
+              <p className="text-[14px] font-[540] text-foreground">
+                {parsed?.unlimited ? "Unlimited" : parsed?.dataGB ? `${parsed.dataGB} GB/day` : "—"}
+              </p>
+              <p className="text-[11px] font-[460] text-muted-foreground mt-0.5">
+                {parsed?.tier ? `${parsed.tier} tier · FUP` : "FUP · reduced speed after cap"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Trip usage</p>
+              <p className="text-[14px] font-[540] text-foreground">{formatBytes(tripUsageBytes)}</p>
+              <p className="text-[11px] font-[460] text-muted-foreground mt-0.5">
+                {tripScopedCdr.length} session{tripScopedCdr.length === 1 ? "" : "s"} in window
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Device activated</p>
+              <p className="text-[14px] font-[540] text-foreground">{activationAt ? formatDate(activationAt) : "—"}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Plans on file</p>
+              <p className="text-[14px] font-[540] text-foreground">
+                {userOffers.length}{" "}
+                <span className="text-[11px] font-[460] text-muted-foreground">
+                  ({userOffers.filter((o) => o.status === "IN_USING").length} active)
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Total usage (window)</p>
+              <p className="text-[14px] font-[540] text-foreground">{formatBytes(totalBytes)}</p>
+              <p className="text-[11px] font-[460] text-muted-foreground mt-0.5">across all plans</p>
+            </div>
+          </div>
+        )}
+
+        {/* Per-plan breakdown — UCL is source of truth for plan state.
+            Rentals: hide offers that don't match any of this customer's orders —
+            the IMEI recycles through the fleet, so unmatched offers belong to other renters. */}
+        <SapphirePlansList
+          offers={userOffers}
+          allOrders={allOrders}
+          selectedPackageSku={packageSku}
+          filterToCustomer={productType === "rental"}
+        />
+
+        {/* Usage history — rentals are restricted to the trip window so prior-renter activity doesn't appear. */}
+        <div className="pt-2 border-t border-lavender/20">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[12px] font-[600] uppercase tracking-wider text-muted-foreground/70">Usage History</p>
+            <p className="text-[11px] font-[460] text-muted-foreground">
+              {isRental ? tripScopedCdr.length : cdrTotal} session{(isRental ? tripScopedCdr.length : cdrTotal) === 1 ? "" : "s"}
+              {isRental ? " · trip window" : " · split by plan"}
+            </p>
+          </div>
+          {isRental ? (
+            <RentalDailyFupChart
+              cdrRecords={tripScopedCdr}
+              dailyCapGb={parsed?.unlimited ? 0 : (parsed?.dataGB || 0)}
+              tripStart={tripStart}
+              tripEnd={tripEnd}
+            />
+          ) : (
+            <SapphireUsagePerPlanChart cdrRecords={tripScopedCdr} offers={userOffers} />
+          )}
+        </div>
+
+        {/* Data Sources panel hidden — kept in code for dev debugging if needed.
+            Re-enable by dropping <DataSourcesPanel ... /> below.
+            <DataSourcesPanel ucl={{ data: deviceInfo, error: deviceInfoError }} cdr={{ records: cdrRecords, total: cdrTotal }} />
+        */}
+        {deviceInfoError && !deviceInfo && (
+          <div className="rounded-[8px] bg-fraud-yellow-soft border border-fraud-yellow/20 px-3 py-2 flex items-start gap-2">
+            <AlertCircle className="h-3.5 w-3.5 text-fraud-yellow mt-0.5 shrink-0" strokeWidth={1.8} />
+            <p className="text-[11px] font-[460] text-fraud-yellow">
+              UCL lookup failed: {deviceInfoError}
+            </p>
+          </div>
+        )}
+
+        {/* UCL lookup error surface */}
+        {deviceInfoError && !model && (
+          <div className="rounded-[8px] bg-fraud-yellow-soft border border-fraud-yellow/20 px-3 py-2 flex items-start gap-2">
+            <AlertCircle className="h-3.5 w-3.5 text-fraud-yellow mt-0.5 shrink-0" strokeWidth={1.8} />
+            <p className="text-[11px] font-[460] text-fraud-yellow">
+              Live device model unavailable from UCL: {deviceInfoError}. OpenSearch usage data shown above is still accurate.
+            </p>
+          </div>
+        )}
+        {cdrRecords.length === 0 && cdrTotal === 0 && !deviceInfoError && (
+          <p className="text-[11px] font-[460] text-muted-foreground">
+            No CDR records found. If the device shipped recently, usage may take 24 hours to appear.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
