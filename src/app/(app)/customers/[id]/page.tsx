@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   Mail,
   Phone,
@@ -44,6 +44,7 @@ import {
   Warehouse,
   Truck,
   Undo2,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { InternalNotes, TEAM_MEMBERS } from "@/components/ui/internal-notes";
+import { KbSlideOver } from "@/components/kb-slide-over";
 import { Input } from "@/components/ui/input";
 import { fetchOS, fetchTelliSIM, getTelliSIMCredentials } from "@/lib/settings-client";
 import { formatPlanDisplay, detectProductType, findPlanSku, parsePlanSku } from "@/lib/sku-parser";
@@ -404,10 +406,78 @@ function findIso2ByCountryName(name: string): string | null {
   return null;
 }
 
+/* ─── Profile History Timeline (collapsible) ─── */
+function ProfileHistoryTimeline({ events, collapsedLimit }: { events: SmdpState[]; collapsedLimit: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasMore = events.length > collapsedLimit;
+  const visible = expanded ? events : events.slice(0, collapsedLimit);
+
+  return (
+    <>
+      <div className="relative ml-4">
+        <div className="absolute left-0 top-2 bottom-2 w-px bg-parchment" />
+        <div className="space-y-5">
+          {visible.map((event, i) => {
+            const label = getSmdpLabel(event.state);
+            const iconMap: Record<string, typeof CheckCircle2> = { success: CheckCircle2, info: Download, warning: WifiOff, error: XCircle };
+            const colorMap: Record<string, string> = { success: "text-success", info: "text-amethyst", warning: "text-fraud-yellow", error: "text-fraud-red" };
+            const bgMap: Record<string, string> = { success: "bg-success-soft", info: "bg-lavender/10", warning: "bg-fraud-yellow-soft", error: "bg-fraud-red-soft" };
+            const EventIcon = iconMap[label.severity];
+            return (
+              <div key={i} className="relative flex items-start gap-4 pl-6">
+                <div className={cn(
+                  "absolute left-[-8px] top-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-background z-10",
+                  bgMap[label.severity]
+                )}>
+                  <EventIcon className={cn("h-2.5 w-2.5", colorMap[label.severity])} strokeWidth={2.5} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[13px] font-[600] text-foreground leading-tight">{label.label}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-[12px] font-[460] text-muted-foreground">{formatDateTime(event.modified_at)}</p>
+                    {event.modification_result && (
+                      <Badge className={cn("rounded-[8px] text-[10px] font-[500] border-0 px-1.5 py-0",
+                        event.modification_result === "SUCCESS" ? "bg-success-soft text-success" : "bg-fraud-red-soft text-fraud-red"
+                      )}>
+                        {event.modification_result}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {hasMore && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1.5 mt-4 ml-4 text-[12px] font-[540] text-amethyst hover:text-amethyst/80 transition-colors cursor-pointer"
+        >
+          {expanded ? (
+            <>
+              <ChevronUp className="h-3.5 w-3.5" strokeWidth={2} />
+              Show less
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
+              Show {events.length - collapsedLimit} more event{events.length - collapsedLimit !== 1 ? "s" : ""}
+            </>
+          )}
+        </button>
+      )}
+    </>
+  );
+}
+
 /* ─── Main Page ─── */
 export default function CustomerProfilePage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const customerEmail = decodeURIComponent(params.id as string);
+  const targetOrderNumber = searchParams.get("orderNumber");
+  const targetSerial = searchParams.get("serial");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -420,7 +490,10 @@ export default function CustomerProfilePage() {
   const [smdpData, setSmdpData] = useState<SmdpData | null>(null);
   const [cdrRecords, setCdrRecords] = useState<Array<Record<string, unknown>>>([]);
   const [cdrTotal, setCdrTotal] = useState(0);
+  const [cdrError, setCdrError] = useState<string | null>(null);
   const [serviceError, setServiceError] = useState<string | null>(null);
+  const [fetchSteps, setFetchSteps] = useState<Array<{ label: string; status: "pending" | "loading" | "done" | "error"; error?: string; durationMs?: number }>>([]);
+  const fetchStepsRef = useRef<typeof fetchSteps>([]);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showAllOrders, setShowAllOrders] = useState(false);
   const [dateRange, setDateRange] = useState<"7" | "14" | "30" | "custom">("30");
@@ -436,12 +509,39 @@ export default function CustomerProfilePage() {
   const [deviceInfoError, setDeviceInfoError] = useState<string | null>(null);
   const [userOffers, setUserOffers] = useState<Array<Record<string, unknown>>>([]);
 
+  // UCL terminal real-time status (online, MCC/MNC, RAT, signal) — on-demand via sync button
+  const [terminalStatus, setTerminalStatus] = useState<Record<string, unknown> | null>(null);
+  const [terminalStatusLoading, setTerminalStatusLoading] = useState(false);
+  const [terminalStatusError, setTerminalStatusError] = useState<string | null>(null);
+  const [terminalStatusCachedAt, setTerminalStatusCachedAt] = useState<number | null>(null);
+
+  // Service data cache — 15 min TTL so agents don't re-fetch on every IMEI click
+  const serviceCacheRef = useRef<Record<string, {
+    ts: number;
+    cdrRecords: Array<Record<string, unknown>>;
+    cdrTotal: number;
+    cdrError?: string | null;
+    deviceInfo: Record<string, unknown> | null;
+    deviceInfoError: string | null;
+    userOffers: Array<Record<string, unknown>>;
+    planAttachments: PlanAttachment[];
+    smdpData: SmdpData | null;
+    locationData: LocationOperator | null;
+    iccidOrders: Order[];
+    terminalStatus: Record<string, unknown> | null;
+    terminalStatusCachedAt: number | null;
+  }>>({});
+  const [serviceCachedAt, setServiceCachedAt] = useState<number | null>(null);
+
   // Coverage lookup state
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [coverageQuery, setCoverageQuery] = useState("");
   const [coverageLoading, setCoverageLoading] = useState(false);
   const [coverageResults, setCoverageResults] = useState<CoverageOperator[]>([]);
   const [coverageError, setCoverageError] = useState<string | null>(null);
+
+  // eSIM KB slide-over
+  const [esimKbOpen, setEsimKbOpen] = useState(false);
 
   // Suspend plan state
   const [suspendDialogOpen, setSuspendDialogOpen] = useState(false);
@@ -476,9 +576,20 @@ export default function CustomerProfilePage() {
       try {
         const data = await fetchOS("/api/opensearch/customer", { email: customerEmail });
         if (data.ok) {
-          setOrders(data.orders || []);
+          const loadedOrders: Order[] = data.orders || [];
+          setOrders(loadedOrders);
           setCustomer(data.customer);
-          if (data.orders?.length > 0) setSelectedOrder(data.orders[0]);
+          if (loadedOrders.length > 0) {
+            // Auto-select the order matching URL param, or fall back to most recent
+            let target = loadedOrders[0];
+            if (targetOrderNumber) {
+              const match = loadedOrders.find(
+                (o) => o.order_number === targetOrderNumber || o.id === targetOrderNumber
+              );
+              if (match) target = match;
+            }
+            setSelectedOrder(target);
+          }
         } else {
           setError(data.error || "Failed to load orders");
         }
@@ -489,21 +600,65 @@ export default function CustomerProfilePage() {
       }
     }
     load();
-  }, [customerEmail]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerEmail, targetOrderNumber]);
 
-  const loadServiceData = useCallback(async (serial: string) => {
+  // Auto-select serial from URL param after order loads (eSIM ICCID from search)
+  const autoSerialTriggered = useRef(false);
+  useEffect(() => {
+    if (autoSerialTriggered.current || !targetSerial || !selectedOrder || loading) return;
+    const serials = getSerials(selectedOrder);
+    if (serials.includes(targetSerial)) {
+      autoSerialTriggered.current = true;
+      loadServiceData(targetSerial);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetSerial, selectedOrder, loading]);
+
+  const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+  const loadServiceData = useCallback(async (serial: string, forceRefresh = false) => {
     setSelectedSerial(serial);
+
+    // Check cache (keyed by serial + dateRange)
+    const cacheKey = `${serial}__${dateRange}`;
+    const cached = serviceCacheRef.current[cacheKey];
+    if (!forceRefresh && cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+      setCdrRecords(cached.cdrRecords);
+      setCdrTotal(cached.cdrTotal);
+      setCdrError(cached.cdrError || null);
+      setDeviceInfo(cached.deviceInfo);
+      setDeviceInfoError(cached.deviceInfoError);
+      setUserOffers(cached.userOffers);
+      setPlanAttachments(cached.planAttachments);
+      setSmdpData(cached.smdpData);
+      setLocationData(cached.locationData);
+      setIccidOrders(cached.iccidOrders);
+      setTerminalStatus(cached.terminalStatus);
+      setTerminalStatusCachedAt(cached.terminalStatusCachedAt);
+      setTerminalStatusError(null);
+      setServiceCachedAt(cached.ts);
+      setServiceLoading(false);
+      setFetchSteps([]);
+      return;
+    }
+
     setServiceLoading(true);
     setServiceError(null);
     setPlanAttachments([]);
     setSmdpData(null);
     setCdrRecords([]);
     setCdrTotal(0);
+    setCdrError(null);
     setLocationData(null);
+    setTerminalStatus(null);
+    setTerminalStatusCachedAt(null);
+    setTerminalStatusError(null);
     setIccidOrders([]);
     setDeviceInfo(null);
     setDeviceInfoError(null);
     setUserOffers([]);
+    setServiceCachedAt(null);
 
     let now: Date;
     let from: Date;
@@ -535,32 +690,74 @@ export default function CustomerProfilePage() {
     const isTelliSim = selectedOrder ? isTelliSimEsim(selectedOrder) : false;
     const isDevice = productType === "sapphire" || productType === "rental";
 
+    // Initialize fetch step tracking
+    const mkStep = (label: string) => ({ label, status: "pending" as const, error: undefined as string | undefined, durationMs: undefined as number | undefined });
+    const steps = isDevice
+      ? [mkStep("CDR Records"), mkStep("UCL Device Info"), mkStep("UCL Terminal Status")]
+      : [
+          mkStep("Subscription & Plans"), mkStep("SMDP Profile"), mkStep("CDR Records"),
+          ...(isTelliSim ? [mkStep("Location")] : []),
+          mkStep("ICCID Order History"),
+        ];
+    fetchStepsRef.current = steps;
+    setFetchSteps([...steps]);
+
+    const track = (idx: number, p: Promise<unknown>) => {
+      fetchStepsRef.current[idx] = { ...fetchStepsRef.current[idx], status: "loading" };
+      setFetchSteps([...fetchStepsRef.current]);
+      const t0 = Date.now();
+      return p.then(
+        (v) => { fetchStepsRef.current[idx] = { ...fetchStepsRef.current[idx], status: "done", durationMs: Date.now() - t0 }; setFetchSteps([...fetchStepsRef.current]); return v; },
+        (e) => { fetchStepsRef.current[idx] = { ...fetchStepsRef.current[idx], status: "error", error: e?.message || "Failed", durationMs: Date.now() - t0 }; setFetchSteps([...fetchStepsRef.current]); throw e; }
+      );
+    };
+
+    // Collect into locals so we can cache + setState in one pass
+    const out = {
+      cdrRecords: [] as Array<Record<string, unknown>>,
+      cdrTotal: 0,
+      cdrError: null as string | null,
+      deviceInfo: null as Record<string, unknown> | null,
+      deviceInfoError: null as string | null,
+      userOffers: [] as Array<Record<string, unknown>>,
+      planAttachments: [] as PlanAttachment[],
+      smdpData: null as SmdpData | null,
+      locationData: null as LocationOperator | null,
+      iccidOrders: [] as Order[],
+      terminalStatus: null as Record<string, unknown> | null,
+      terminalStatusCachedAt: null as number | null,
+    };
+
     try {
-      // Branch: Sapphire/Rental serials are IMEIs — query UCL CDR + device binding.
-      // eSIM serials are ICCIDs — query TelliSIM + ICCID CDR.
       if (isDevice) {
         const results = await Promise.allSettled([
-          fetchOS("/api/opensearch/cdr", {
+          track(0, fetchOS("/api/opensearch/cdr", {
             imei: serial,
             from: from.toISOString(),
             to: now.toISOString(),
             size: 500,
-          }),
-          fetch("/api/ucl/device-info", {
+          })),
+          track(1, fetch("/api/ucl/device-info", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ imei: serial, orgUsername: selectedOrder?.system || undefined }),
-          }).then((r) => r.json()),
+          }).then((r) => r.json())),
+          track(2, fetch("/api/ucl/terminal-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ imei: serial, orgUsername: selectedOrder?.system || undefined }),
+          }).then((r) => r.json())),
         ]);
 
-        const [cdrRes, deviceRes] = results as PromiseSettledResult<Record<string, unknown>>[];
+        const [cdrRes, deviceRes, terminalRes] = results as PromiseSettledResult<Record<string, unknown>>[];
         if (cdrRes.status === "fulfilled" && cdrRes.value.ok) {
           const cdr = cdrRes.value.cdr as Record<string, unknown> | undefined;
-          const ucl = cdr?.ucl as { records?: Record<string, unknown>[]; total?: number } | undefined;
-          const daily = cdr?.dailyConsumption as { records?: Record<string, unknown>[]; total?: number } | undefined;
-          const records = ucl?.records || daily?.records || [];
-          setCdrRecords(records);
-          setCdrTotal(ucl?.total || daily?.total || 0);
+          const ucl = cdr?.ucl as { records?: Record<string, unknown>[]; total?: number; error?: string } | undefined;
+          const daily = cdr?.dailyConsumption as { records?: Record<string, unknown>[]; total?: number; error?: string } | undefined;
+          out.cdrRecords = ucl?.records || daily?.records || [];
+          out.cdrTotal = ucl?.total || daily?.total || 0;
+          const srcError = ucl?.error || daily?.error;
+          if (out.cdrRecords.length === 0 && srcError) out.cdrError = srcError;
         }
         if (deviceRes.status === "fulfilled") {
           const val = deviceRes.value as {
@@ -570,85 +767,135 @@ export default function CustomerProfilePage() {
             error?: string;
           };
           if (val.ok) {
-            setDeviceInfo(val.binding || null);
-            setUserOffers(val.offers || []);
+            out.deviceInfo = val.binding || null;
+            out.userOffers = val.offers || [];
           } else {
-            setDeviceInfoError(val.error || "UCL lookup unavailable");
+            out.deviceInfoError = val.error || "UCL lookup unavailable";
           }
         } else {
-          setDeviceInfoError("Network error contacting UCL");
+          out.deviceInfoError = "Network error contacting UCL";
         }
-        return; // Skip eSIM-only result processing below
-      }
-
-      const promises: Promise<unknown>[] = [
-        fetchTelliSIM(`/api/tellisim/subscription/${serial}`, {}),
-        fetchTelliSIM(`/api/tellisim/smdp/${serial}`, {}),
-        fetchOS("/api/opensearch/cdr", {
-          iccid: serial,
-          productSku: skus.find(s => s.toUpperCase().includes("ESIM")) || "",
-          from: from.toISOString(),
-          to: now.toISOString(),
-          size: 500,
-        }),
-      ];
-
-      // 4th call: location data for TelliSIM eSIMs only
-      if (isTelliSim) {
-        promises.push(fetchTelliSIM(`/api/tellisim/location/${serial}`, {}));
-      }
-
-      // 5th call: all orders sharing this ICCID (for plan-to-order matching)
-      promises.push(fetchOS("/api/opensearch/orders-by-iccid", { iccid: serial }));
-
-      const results = await Promise.allSettled(promises);
-
-      const [planRes, smdpRes, cdrRes] = results as PromiseSettledResult<{ ok?: boolean; planAttachments?: { data?: PlanAttachment[] } | PlanAttachment[]; smdp?: SmdpData; cdr?: { tellisim?: { records?: Record<string, unknown>[]; total?: number } } }>[];
-
-      if (planRes.status === "fulfilled" && planRes.value.ok) {
-        const att = (planRes.value.planAttachments as { data?: PlanAttachment[] })?.data || planRes.value.planAttachments || [];
-        setPlanAttachments(Array.isArray(att) ? att : []);
-      }
-      if (smdpRes.status === "fulfilled" && smdpRes.value.ok) setSmdpData(smdpRes.value.smdp || null);
-      if (cdrRes.status === "fulfilled") {
-        const cdrVal = cdrRes.value as Record<string, unknown>;
-        if (cdrVal.ok) {
-          const cdr = cdrVal.cdr as Record<string, unknown> | undefined;
-          const tellisim = cdr?.tellisim as { records?: Record<string, unknown>[]; total?: number } | undefined;
-          const archive = cdr?.archive as { records?: Record<string, unknown>[]; total?: number } | undefined;
-          // Use TelliSIM CDR first, fall back to archive
-          const records = tellisim?.records || archive?.records || [];
-          const total = tellisim?.total || archive?.total || 0;
-          setCdrRecords(records);
-          setCdrTotal(total);
+        // Terminal real-time status (online, MCC/MNC, RAT, signal)
+        if (terminalRes?.status === "fulfilled") {
+          const tVal = terminalRes.value as { ok?: boolean; terminal?: Record<string, unknown> };
+          if (tVal.ok && tVal.terminal) {
+            out.terminalStatus = tVal.terminal;
+            out.terminalStatusCachedAt = Date.now();
+          }
         }
-      }
+      } else {
+        const promises: Promise<unknown>[] = [
+          track(0, fetchTelliSIM(`/api/tellisim/subscription/${serial}`, {})),
+          track(1, fetchTelliSIM(`/api/tellisim/smdp/${serial}`, {})),
+          track(2, fetchOS("/api/opensearch/cdr", {
+            iccid: serial,
+            productSku: skus.find(s => s.toUpperCase().includes("ESIM")) || "",
+            from: from.toISOString(),
+            to: now.toISOString(),
+            size: 500,
+          })),
+        ];
 
-      // Location data for TelliSIM
-      if (isTelliSim && results[3]) {
-        const locRes = results[3] as PromiseSettledResult<{ ok?: boolean; location?: { last_operator?: LocationOperator; error?: boolean } }>;
-        if (locRes.status === "fulfilled" && locRes.value.ok) {
-          setLocationData(locRes.value.location?.last_operator || null);
+        if (isTelliSim) {
+          promises.push(track(3, fetchTelliSIM(`/api/tellisim/location/${serial}`, {})));
         }
-      }
+        const iccidStepIdx = isTelliSim ? 4 : 3;
+        promises.push(track(iccidStepIdx, fetchOS("/api/opensearch/orders-by-iccid", { iccid: serial })));
 
-      // ICCID orders — for plan-to-order matching
-      const iccidIdx = isTelliSim ? 4 : 3;
-      if (results[iccidIdx]) {
-        const iccidRes = results[iccidIdx] as PromiseSettledResult<{ ok?: boolean; orders?: Order[] }>;
-        if (iccidRes.status === "fulfilled" && iccidRes.value.ok) {
-          setIccidOrders(iccidRes.value.orders || []);
+        const results = await Promise.allSettled(promises);
+
+        const [planRes, smdpRes, cdrRes] = results as PromiseSettledResult<{ ok?: boolean; planAttachments?: { data?: PlanAttachment[] } | PlanAttachment[]; smdp?: SmdpData; cdr?: { tellisim?: { records?: Record<string, unknown>[]; total?: number } } }>[];
+
+        if (planRes.status === "fulfilled" && planRes.value.ok) {
+          const att = (planRes.value.planAttachments as { data?: PlanAttachment[] })?.data || planRes.value.planAttachments || [];
+          out.planAttachments = Array.isArray(att) ? att : [];
+        }
+        if (smdpRes.status === "fulfilled" && smdpRes.value.ok) out.smdpData = smdpRes.value.smdp || null;
+        if (cdrRes.status === "fulfilled") {
+          const cdrVal = cdrRes.value as Record<string, unknown>;
+          if (cdrVal.ok) {
+            const cdr = cdrVal.cdr as Record<string, unknown> | undefined;
+            const tellisim = cdr?.tellisim as { records?: Record<string, unknown>[]; total?: number; error?: string } | undefined;
+            const archive = cdr?.archive as { records?: Record<string, unknown>[]; total?: number; error?: string } | undefined;
+            out.cdrRecords = tellisim?.records || archive?.records || [];
+            out.cdrTotal = tellisim?.total || archive?.total || 0;
+            // Surface CDR source errors so the UI can show "not available" instead of empty
+            const srcError = tellisim?.error || archive?.error;
+            if (out.cdrRecords.length === 0 && srcError) out.cdrError = srcError;
+          }
+        }
+
+        if (isTelliSim && results[3]) {
+          const locRes = results[3] as PromiseSettledResult<{ ok?: boolean; location?: { last_operator?: LocationOperator; error?: boolean } }>;
+          if (locRes.status === "fulfilled" && locRes.value.ok) {
+            out.locationData = locRes.value.location?.last_operator || null;
+          }
+        }
+
+        const iccidIdx = isTelliSim ? 4 : 3;
+        if (results[iccidIdx]) {
+          const iccidRes = results[iccidIdx] as PromiseSettledResult<{ ok?: boolean; orders?: Order[] }>;
+          if (iccidRes.status === "fulfilled" && iccidRes.value.ok) {
+            out.iccidOrders = iccidRes.value.orders || [];
+          }
         }
       }
     } catch (err) {
       setServiceError(err instanceof Error ? err.message : "Failed to load service data");
     } finally {
+      // Apply results + populate cache
+      setCdrRecords(out.cdrRecords);
+      setCdrTotal(out.cdrTotal);
+      setCdrError(out.cdrError);
+      setDeviceInfo(out.deviceInfo);
+      setDeviceInfoError(out.deviceInfoError);
+      setUserOffers(out.userOffers);
+      setPlanAttachments(out.planAttachments);
+      setSmdpData(out.smdpData);
+      setLocationData(out.locationData);
+      setIccidOrders(out.iccidOrders);
+      setTerminalStatus(out.terminalStatus);
+      setTerminalStatusCachedAt(out.terminalStatusCachedAt);
+      const nowTs = Date.now();
+      serviceCacheRef.current[cacheKey] = { ts: nowTs, ...out };
+      setServiceCachedAt(nowTs);
       setServiceLoading(false);
     }
   }, [dateRange, selectedOrder]);
 
-  useEffect(() => { if (selectedSerial) loadServiceData(selectedSerial); }, [dateRange]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (selectedSerial) loadServiceData(selectedSerial, true); }, [dateRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** On-demand refresh of terminal real-time status (Sync button). Updates cache too. */
+  const refreshTerminalStatus = useCallback(async (serial: string) => {
+    setTerminalStatusLoading(true);
+    setTerminalStatusError(null);
+    try {
+      const res = await fetch("/api/ucl/terminal-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imei: serial, orgUsername: selectedOrder?.system || undefined }),
+      });
+      const data = await res.json();
+      if (data.ok && data.terminal) {
+        const ts = Date.now();
+        setTerminalStatus(data.terminal);
+        setTerminalStatusCachedAt(ts);
+        // Update the service cache entry too
+        const cacheKey = `${serial}__${dateRange}`;
+        const cached = serviceCacheRef.current[cacheKey];
+        if (cached) {
+          cached.terminalStatus = data.terminal;
+          cached.terminalStatusCachedAt = ts;
+        }
+      } else {
+        setTerminalStatusError(data.error || "Terminal status unavailable");
+      }
+    } catch {
+      setTerminalStatusError("Network error fetching terminal status");
+    } finally {
+      setTerminalStatusLoading(false);
+    }
+  }, [selectedOrder, dateRange]);
 
   function copy(text: string, field: string) {
     navigator.clipboard.writeText(text);
@@ -692,8 +939,8 @@ export default function CustomerProfilePage() {
       setSuspendSuccess(true);
       setSuspendDialogOpen(false);
       setSuspendConfirmIccid("");
-      // Reload service data
-      if (selectedSerial) loadServiceData(selectedSerial);
+      // Reload service data (force refresh after action)
+      if (selectedSerial) loadServiceData(selectedSerial, true);
     } catch (err) {
       setSuspendError(err instanceof Error ? err.message : "Failed to suspend plan");
     } finally {
@@ -732,7 +979,37 @@ export default function CustomerProfilePage() {
     try {
       const currentEmail = typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") || "" : "";
       const currentUser = TEAM_MEMBERS.find((m) => m.email === currentEmail) || TEAM_MEMBERS[0];
-      // Create escalation notification for all supervisors/admins
+      const customerFullName = [customer?.firstName, customer?.lastName].filter(Boolean).join(" ") || customerEmail;
+
+      // Create escalation record in the queue
+      await fetch("/api/escalations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: selectedOrder?.id || customerEmail,
+          orderNumber: selectedOrder?.order_number || selectedOrder?.id || "N/A",
+          customerName: customerFullName,
+          customerEmail: customerEmail,
+          escalatedBy: currentUser.name,
+          escalatedById: currentEmail,
+          reason: escalateNote,
+        }),
+      });
+
+      // Create internal note on the customer page for visibility
+      await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: customerEmail,
+          authorId: currentUser.id,
+          authorName: currentUser.name,
+          body: `[Escalated] Order ${selectedOrder?.order_number || selectedOrder?.id || "N/A"}: ${escalateNote}`,
+          mentions: [],
+        }),
+      });
+
+      // Also send notification to supervisors/admins as a heads-up
       const supervisors = TEAM_MEMBERS.filter((m) => m.role === "admin" || m.role === "manager");
       for (const sup of supervisors) {
         if (sup.email === currentEmail) continue;
@@ -742,9 +1019,9 @@ export default function CustomerProfilePage() {
           body: JSON.stringify({
             userId: sup.email,
             type: "escalation",
-            title: `Escalation: ${[customer?.firstName, customer?.lastName].filter(Boolean).join(" ") || customerEmail}`,
+            title: `Escalation: ${customerFullName}`,
             message: escalateNote,
-            link: `/customers/${customerEmail}`,
+            link: `/escalations`,
             sourceType: "escalation",
             sourceId: selectedOrder?.id || customerEmail,
             actorId: currentEmail,
@@ -767,7 +1044,23 @@ export default function CustomerProfilePage() {
     try {
       const currentEmail = typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") || "" : "";
       const currentUser = TEAM_MEMBERS.find((m) => m.email === currentEmail) || TEAM_MEMBERS[0];
-      // Notify all supervisors/admins about fraud flag
+
+      // Write structured fraud report to DB
+      await fetch("/api/reports/fraud", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: selectedOrder?.id || "",
+          orderNumber: selectedOrder?.order_number || selectedOrder?.id || "N/A",
+          customerName: [customer?.firstName, customer?.lastName].filter(Boolean).join(" ") || customerEmail,
+          customerEmail,
+          notes: fraudNote,
+          reportedBy: currentUser.name,
+          reportedById: currentEmail,
+        }),
+      });
+
+      // Notify all supervisors/admins about fraud flag (existing behavior)
       const supervisors = TEAM_MEMBERS.filter((m) => m.role === "admin" || m.role === "manager");
       for (const sup of supervisors) {
         if (sup.email === currentEmail) continue;
@@ -851,6 +1144,8 @@ export default function CustomerProfilePage() {
   const tripStart = primaryLine?.trip_start;
   const tripEnd = primaryLine?.trip_end;
   const packageSku = primaryLine?.package_sku;
+  // Live plan name from Tellisim (per-serial truth, only populated for eSIM after serial click)
+  const livePlanName = currentPlan?.plan?.name;
   // Insurance is a per-day add-on: qty = number of rental days covered
   const insuranceLine = orderDetails.find(
     (d) => (d.product_sku || "").toUpperCase() === "INSURANCE"
@@ -1011,6 +1306,9 @@ export default function CustomerProfilePage() {
               <div className="flex items-center gap-1.5">
                 {productType === "esim" && (
                   <>
+                    <Button size="sm" title="eSIM support knowledge base" onClick={() => setEsimKbOpen(true)} className="h-7 rounded-[8px] bg-lavender/20 text-amethyst text-[11px] font-[600] hover:bg-lavender/30 cursor-pointer px-2">
+                      <BookOpen className="h-3 w-3" strokeWidth={2} /> eSIM KB
+                    </Button>
                     <Button size="sm" title="Disable eSIM profile temporarily (TelliSIM)" className="h-7 rounded-[8px] bg-fraud-yellow-soft text-fraud-yellow text-[11px] font-[600] hover:bg-fraud-yellow/20 cursor-pointer px-2 opacity-50" disabled>
                       <Pause className="h-3 w-3" strokeWidth={2} /> Pause
                     </Button>
@@ -1034,10 +1332,16 @@ export default function CustomerProfilePage() {
               </div>
             </div>
           </CardHeader>
+          <KbSlideOver
+            open={esimKbOpen}
+            onOpenChange={setEsimKbOpen}
+            modelCode="ESIM"
+            deviceLabel="eSIM Plans"
+          />
           <CardContent className="space-y-4">
-            {/* Plan headline with flag */}
-            {(packageSku || planSku) && (() => {
-              const sku = packageSku || planSku || "";
+            {/* Plan headline with flag — prefers live Tellisim data when a serial is selected */}
+            {(livePlanName || packageSku || planSku) && (() => {
+              const sku = livePlanName || packageSku || planSku || "";
               const parsed = parsePlanSku(sku);
               const flag = parsed ? getCountryFlag(parsed.countryCode) : "";
               return (
@@ -1045,6 +1349,9 @@ export default function CustomerProfilePage() {
                   <p className="text-[22px] font-[540] text-charcoal leading-tight">
                     {flag && <span className="mr-2">{flag}</span>}
                     {formatPlanDisplay(sku)}
+                    {livePlanName && (
+                      <span className="ml-2 text-[11px] font-[540] text-success/70 uppercase tracking-wider">Live</span>
+                    )}
                   </p>
                   {/* Show covered countries for regional/global plans */}
                   {(() => {
@@ -1070,6 +1377,32 @@ export default function CustomerProfilePage() {
                 </div>
               );
             })()}
+
+            {/* Quick Facts — single-glance readout of the facts a support agent needs on a live call:
+                paid · trip · shipped · usage. Reduces scan time by keeping vital signals in one row. */}
+            {productType === "rental" && (
+              <QuickFactsRental
+                paidAt={selectedOrder.created_at}
+                amount={selectedOrder.total}
+                currency={currencyCode}
+                tripStart={tripStart}
+                tripEnd={tripEnd}
+                totalDays={totalRentalDays}
+                tracking={Array.isArray(selectedOrder.tracking_information) ? selectedOrder.tracking_information : []}
+                cdrBytes={(() => {
+                  const ts = tripStart ? new Date(tripStart).getTime() : 0;
+                  const te = tripEnd ? new Date(tripEnd).getTime() + 86_400_000 - 1 : 0;
+                  if (!ts || !te) return 0;
+                  return cdrRecords.reduce((s, r) => {
+                    const d = r["USAGE_DATE_UTC"];
+                    const t = typeof d === "string" ? new Date(d).getTime() : typeof d === "number" ? d : 0;
+                    if (t < ts || t > te) return s;
+                    return s + Number(r["TOTAL_QTY"] || r["flowsize"] || 0);
+                  }, 0);
+                })()}
+                isAwaitingFulfillment={isAwaitingFulfillment}
+              />
+            )}
 
             {/* Exchange rate note */}
 
@@ -1154,12 +1487,61 @@ export default function CustomerProfilePage() {
         <>
           {serviceLoading ? (
             <Card className="rounded-[16px] bg-lavender/5">
-              <CardContent className="flex items-center justify-center py-16">
-                <Loader2 className="h-5 w-5 animate-spin text-lavender" />
-                <span className="ml-3 text-[14px] font-[460] text-muted-foreground">Loading service details...</span>
+              <CardContent className="py-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-lavender" />
+                  <span className="text-[14px] font-[540] text-charcoal">Loading service details...</span>
+                </div>
+                {fetchSteps.length > 0 && (
+                  <div className="space-y-2 ml-1">
+                    {fetchSteps.map((step, i) => (
+                      <div key={i} className="flex items-center gap-3 text-[13px]">
+                        {step.status === "pending" && <div className="h-4 w-4 rounded-full border-2 border-parchment shrink-0" />}
+                        {step.status === "loading" && <Loader2 className="h-4 w-4 animate-spin text-amethyst shrink-0" />}
+                        {step.status === "done" && <CheckCircle2 className="h-4 w-4 text-success shrink-0" strokeWidth={1.8} />}
+                        {step.status === "error" && <XCircle className="h-4 w-4 text-fraud-red shrink-0" strokeWidth={1.8} />}
+                        <span className={cn(
+                          "font-[460]",
+                          step.status === "done" && "text-success",
+                          step.status === "error" && "text-fraud-red",
+                          step.status === "loading" && "text-charcoal",
+                          step.status === "pending" && "text-charcoal/40",
+                        )}>
+                          {step.label}
+                        </span>
+                        {step.durationMs != null && (
+                          <span className="text-[11px] text-charcoal/40 ml-auto font-mono">{step.durationMs}ms</span>
+                        )}
+                        {step.status === "error" && step.error && (
+                          <span className="text-[11px] text-fraud-red/70 ml-auto truncate max-w-[200px]">{step.error}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
-          ) : productType !== "esim" ? (
+          ) : (
+            <>
+            {/* Error banner for failed fetch steps */}
+            {fetchSteps.some(s => s.status === "error") && (
+              <Card className="rounded-[16px] border-fraud-red/20 bg-fraud-red-soft/30 mb-4">
+                <CardContent className="py-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-fraud-red mt-0.5 shrink-0" strokeWidth={1.8} />
+                    <div className="space-y-1">
+                      <p className="text-[13px] font-[600] text-fraud-red">Some data sources failed to load</p>
+                      {fetchSteps.filter(s => s.status === "error").map((s, i) => (
+                        <p key={i} className="text-[12px] font-[460] text-fraud-red/80">
+                          {s.label}: {s.error || "Unknown error"} {s.durationMs != null && <span className="text-fraud-red/50">({s.durationMs}ms)</span>}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {productType !== "esim" ? (
             <SapphireDeviceCard
               imei={selectedSerial}
               deviceInfo={deviceInfo}
@@ -1176,6 +1558,11 @@ export default function CustomerProfilePage() {
               productType={productType}
               onCopy={(v) => copy(v, "imei")}
               copied={copiedField === "imei"}
+              terminalStatus={terminalStatus}
+              terminalStatusLoading={terminalStatusLoading}
+              terminalStatusError={terminalStatusError}
+              terminalStatusCachedAt={terminalStatusCachedAt}
+              onSyncTerminalStatus={() => refreshTerminalStatus(selectedSerial)}
             />
           ) : serviceError ? (
             <Card className="rounded-[16px]">
@@ -1291,115 +1678,206 @@ export default function CustomerProfilePage() {
                 </CardContent>
               </Card>
 
-              {/* ─── Device & Network Card — TelliSIM eSIM only ─── */}
-              {isTelliSim && (
-                <Card className="rounded-[16px]">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-[14px] font-[600] text-foreground flex items-center gap-2">
-                      <Smartphone className="h-4 w-4 text-amethyst" strokeWidth={1.8} />
-                      Device & Network
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {locationData ? (
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                        {/* Device (IMEI) */}
-                        <div>
-                          <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Device</p>
-                          {(locationData.brand || locationData.model) && (
-                            <p className="text-[14px] font-[540] text-foreground mb-0.5">
-                              {[locationData.brand, locationData.model].filter(Boolean).join(" / ")}
+              {/* ─── eSIM Network Status Card — TelliSIM only ─── */}
+              {isTelliSim && (() => {
+                // Determine eSIM lifecycle state to decide what to show
+                const profileStatus = effectiveSmdpStatus;
+                const isProfileInstalled = profileStatus === "Enable" || profileStatus === "Disable";
+                const isProfileEnabled = profileStatus === "Enable";
+                const isProfileDisabled = profileStatus === "Disable";
+                const isProfileDeleted = profileStatus === "Delete";
+                const isProfilePending = !profileStatus || profileStatus === "BPP Installation";
+                const hasActivePlan = currentPlan?.state === "ACTIVE" || currentPlan?.state === "ENABLED";
+                const hasPendingPlan = currentPlan?.state === "PENDING_FOR_FIRST_USE" || currentPlan?.state === "PENDING" || currentPlan?.state === "CREATED";
+                const canShowNetwork = isProfileEnabled && (hasActivePlan || cdrTotal > 0);
+                const hasNetworkData = locationData || cdrImei || cdrCountry;
+
+                return (
+                  <Card className="rounded-[16px]">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-[14px] font-[600] text-foreground flex items-center gap-2">
+                        <Signal className="h-4 w-4 text-amethyst" strokeWidth={1.8} />
+                        eSIM Network Status
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {/* ── Profile not yet downloaded ── */}
+                      {isProfilePending && (
+                        <div className="flex items-center gap-3 py-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-lavender/10">
+                            <Download className="h-4 w-4 text-amethyst" strokeWidth={1.8} />
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-[540] text-foreground">
+                              {profileStatus === "BPP Installation" ? "Profile downloaded — pending activation" : "eSIM profile not yet installed on a device"}
                             </p>
-                          )}
-                          <button onClick={() => copy(locationData.imei || "", "imei")}
-                            className="flex items-center gap-1.5 cursor-pointer group">
-                            <p className="text-[12px] font-[460] text-muted-foreground font-mono">IMEI: {locationData.imei || "—"}</p>
-                            {copiedField === "imei" ? (
-                              <span className="text-[11px] font-[600] text-success">Copied!</span>
-                            ) : (
-                              <Copy className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={1.8} />
-                            )}
-                          </button>
-                        </div>
-
-                        {/* Last Country */}
-                        <div>
-                          <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Last Country</p>
-                          <p className="text-[14px] font-[540] text-foreground">
-                            {locationData.country ? (
-                              <>
-                                <span className="mr-1.5">{getCountryFlag(locationData.country)}</span>
-                                {getCountryName(locationData.country)}
-                              </>
-                            ) : "—"}
-                          </p>
-                        </div>
-
-                        {/* Operator */}
-                        <div>
-                          <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Operator</p>
-                          <p className="text-[14px] font-[540] text-foreground">{locationData.operator || "—"}</p>
-                        </div>
-
-                        {/* Network (RAT) */}
-                        <div>
-                          <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Network</p>
-                          {locationData.rat ? (
-                            <Badge className={cn("rounded-[8px] text-[12px] font-[700] border-0 px-2.5 py-0.5", ratBadgeColor(locationData.rat))}>
-                              {ratDisplayLabel(locationData.rat)}
-                            </Badge>
-                          ) : (
-                            <p className="text-[14px] font-[540] text-muted-foreground">—</p>
-                          )}
-                        </div>
-
-                        {/* Last Seen */}
-                        <div>
-                          <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Last Seen</p>
-                          <p className="text-[14px] font-[540] text-foreground">{formatDateTime(locationData.event_time)}</p>
-                        </div>
-                      </div>
-                    ) : (cdrImei || cdrCountry) ? (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          {cdrImei && (
-                            <div>
-                              <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Device (from CDR)</p>
-                              <button onClick={() => copy(cdrImei, "imei")} className="flex items-center gap-1.5 cursor-pointer group">
-                                <p className="text-[12px] font-[460] text-foreground font-mono">IMEI: {cdrImei}</p>
-                                {copiedField === "imei" ? (
-                                  <span className="text-[11px] font-[600] text-success">Copied!</span>
-                                ) : (
-                                  <Copy className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={1.8} />
-                                )}
-                              </button>
-                            </div>
-                          )}
-                          {cdrCountry && (
-                            <div>
-                              <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Last Country (from CDR)</p>
-                              <p className="text-[14px] font-[540] text-foreground">
-                                {getCountryFlag(cdrCountry)} {getCountryName(cdrCountry)}
-                              </p>
-                            </div>
-                          )}
-                          {cdrLastDate && (
-                            <div>
-                              <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Last Session</p>
-                              <p className="text-[13px] font-[460] text-foreground">{formatDateTime(cdrLastDate)}</p>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-3 py-4">
-                          <Radio className="h-5 w-5 text-muted-foreground/40" strokeWidth={1.5} />
-                          <p className="text-[13px] font-[460] text-muted-foreground">
-                            No network activity data available
-                          </p>
+                            <p className="text-[11px] font-[460] text-muted-foreground mt-0.5">
+                              Network data will appear after the customer installs and enables the eSIM
+                            </p>
+                          </div>
                         </div>
                       )}
-                  </CardContent>
-                </Card>
-              )}
+
+                      {/* ── Profile disabled ── */}
+                      {isProfileDisabled && (
+                        <div className="flex items-center gap-3 py-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-fraud-yellow-soft">
+                            <WifiOff className="h-4 w-4 text-fraud-yellow" strokeWidth={1.8} />
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-[540] text-foreground">eSIM turned off in device settings</p>
+                            <p className="text-[11px] font-[460] text-muted-foreground mt-0.5">
+                              No network data while disabled — ask customer to re-enable in Settings
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Profile deleted/removed ── */}
+                      {isProfileDeleted && (
+                        <div className="flex items-center gap-3 py-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-fraud-red-soft">
+                            <XCircle className="h-4 w-4 text-fraud-red" strokeWidth={1.8} />
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-[540] text-foreground">eSIM profile removed from device</p>
+                            <p className="text-[11px] font-[460] text-muted-foreground mt-0.5">
+                              Profile was permanently deleted — customer needs to re-download
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Profile enabled — show network data or contextual empty state ── */}
+                      {isProfileEnabled && (
+                        <>
+                          {/* Full location data from TelliSIM API */}
+                          {locationData ? (
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                              <div>
+                                <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Device</p>
+                                {(locationData.brand || locationData.model) && (
+                                  <p className="text-[14px] font-[540] text-foreground mb-0.5">
+                                    {[locationData.brand, locationData.model].filter(Boolean).join(" / ")}
+                                  </p>
+                                )}
+                                <button onClick={() => copy(locationData.imei || "", "imei")}
+                                  className="flex items-center gap-1.5 cursor-pointer group">
+                                  <p className="text-[12px] font-[460] text-muted-foreground font-mono">IMEI: {locationData.imei || "—"}</p>
+                                  {copiedField === "imei" ? (
+                                    <span className="text-[11px] font-[600] text-success">Copied!</span>
+                                  ) : (
+                                    <Copy className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={1.8} />
+                                  )}
+                                </button>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Last Country</p>
+                                <p className="text-[14px] font-[540] text-foreground">
+                                  {locationData.country ? (
+                                    <>
+                                      <span className="mr-1.5">{getCountryFlag(locationData.country)}</span>
+                                      {getCountryName(locationData.country)}
+                                    </>
+                                  ) : "—"}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Operator</p>
+                                <p className="text-[14px] font-[540] text-foreground">{locationData.operator || "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Network</p>
+                                {locationData.rat ? (
+                                  <Badge className={cn("rounded-[8px] text-[12px] font-[700] border-0 px-2.5 py-0.5", ratBadgeColor(locationData.rat))}>
+                                    {ratDisplayLabel(locationData.rat)}
+                                  </Badge>
+                                ) : (
+                                  <p className="text-[14px] font-[540] text-muted-foreground">—</p>
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Last Seen</p>
+                                <p className="text-[14px] font-[540] text-foreground">{formatDateTime(locationData.event_time)}</p>
+                              </div>
+                            </div>
+                          ) : (cdrImei || cdrCountry) ? (
+                            /* CDR fallback when location API returned nothing */
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              {cdrImei && (
+                                <div>
+                                  <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Device (from CDR)</p>
+                                  <button onClick={() => copy(cdrImei, "imei")} className="flex items-center gap-1.5 cursor-pointer group">
+                                    <p className="text-[12px] font-[460] text-foreground font-mono">IMEI: {cdrImei}</p>
+                                    {copiedField === "imei" ? (
+                                      <span className="text-[11px] font-[600] text-success">Copied!</span>
+                                    ) : (
+                                      <Copy className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={1.8} />
+                                    )}
+                                  </button>
+                                </div>
+                              )}
+                              {cdrCountry && (
+                                <div>
+                                  <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Last Country (from CDR)</p>
+                                  <p className="text-[14px] font-[540] text-foreground">
+                                    {getCountryFlag(cdrCountry)} {getCountryName(cdrCountry)}
+                                  </p>
+                                </div>
+                              )}
+                              {cdrLastDate && (
+                                <div>
+                                  <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60 mb-1">Last Session</p>
+                                  <p className="text-[13px] font-[460] text-foreground">{formatDateTime(cdrLastDate)}</p>
+                                </div>
+                              )}
+                            </div>
+                          ) : hasActivePlan ? (
+                            /* Active plan but no network events yet */
+                            <div className="flex items-center gap-3 py-3">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-lavender/10">
+                                <Radio className="h-4 w-4 text-amethyst animate-pulse" strokeWidth={1.8} />
+                              </div>
+                              <div>
+                                <p className="text-[13px] font-[540] text-foreground">Awaiting first network connection</p>
+                                <p className="text-[11px] font-[460] text-muted-foreground mt-0.5">
+                                  eSIM is enabled with an active plan — check data roaming and APN settings
+                                </p>
+                              </div>
+                            </div>
+                          ) : hasPendingPlan ? (
+                            /* Plan provisioned but not activated */
+                            <div className="flex items-center gap-3 py-3">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-lavender/10">
+                                <Clock className="h-4 w-4 text-amethyst" strokeWidth={1.8} />
+                              </div>
+                              <div>
+                                <p className="text-[13px] font-[540] text-foreground">Plan pending activation</p>
+                                <p className="text-[11px] font-[460] text-muted-foreground mt-0.5">
+                                  Network data will appear once the plan activates on first use
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Enabled profile but no active plan */
+                            <div className="flex items-center gap-3 py-3">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-muted/50">
+                                <WifiOff className="h-4 w-4 text-muted-foreground" strokeWidth={1.8} />
+                              </div>
+                              <div>
+                                <p className="text-[13px] font-[540] text-foreground">No active data plan</p>
+                                <p className="text-[11px] font-[460] text-muted-foreground mt-0.5">
+                                  eSIM is enabled but has no active plan — customer may need a new plan or top-up
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })()}
 
               {/* Profile History Timeline — Fixed spacing */}
               {/* CDR-derived status note when SMDP returned nothing but usage exists */}
@@ -1416,53 +1894,35 @@ export default function CustomerProfilePage() {
                 </div>
               )}
 
-              {smdpData?.state_history && smdpData.state_history.length > 0 && (
-                <Card className="rounded-[16px]">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-[14px] font-[600] text-foreground flex items-center gap-2">
-                      <Globe className="h-4 w-4 text-amethyst" strokeWidth={1.8} />
-                      Profile History
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="relative ml-4">
-                      <div className="absolute left-0 top-2 bottom-2 w-px bg-parchment" />
-                      <div className="space-y-5">
-                        {smdpData.state_history.map((event, i) => {
-                          const label = getSmdpLabel(event.state);
-                          const iconMap = { success: CheckCircle2, info: Download, warning: WifiOff, error: XCircle };
-                          const colorMap = { success: "text-success", info: "text-amethyst", warning: "text-fraud-yellow", error: "text-fraud-red" };
-                          const bgMap = { success: "bg-success-soft", info: "bg-lavender/10", warning: "bg-fraud-yellow-soft", error: "bg-fraud-red-soft" };
-                          const EventIcon = iconMap[label.severity];
-                          return (
-                            <div key={i} className="relative flex items-start gap-4 pl-6">
-                              <div className={cn(
-                                "absolute left-[-8px] top-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-background z-10",
-                                bgMap[label.severity]
-                              )}>
-                                <EventIcon className={cn("h-2.5 w-2.5", colorMap[label.severity])} strokeWidth={2.5} />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-[13px] font-[600] text-foreground leading-tight">{label.label}</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <p className="text-[12px] font-[460] text-muted-foreground">{formatDateTime(event.modified_at)}</p>
-                                  {event.modification_result && (
-                                    <Badge className={cn("rounded-[8px] text-[10px] font-[500] border-0 px-1.5 py-0",
-                                      event.modification_result === "SUCCESS" ? "bg-success-soft text-success" : "bg-fraud-red-soft text-fraud-red"
-                                    )}>
-                                      {event.modification_result}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+              {smdpData?.state_history && smdpData.state_history.length > 0 && (() => {
+                // Sort newest first, then limit to 3 unless expanded
+                const sortedHistory = [...smdpData.state_history].sort((a, b) => {
+                  const da = a.modified_at ? new Date(a.modified_at).getTime() : 0;
+                  const db = b.modified_at ? new Date(b.modified_at).getTime() : 0;
+                  return db - da;
+                });
+                const COLLAPSED_LIMIT = 3;
+                const hasMore = sortedHistory.length > COLLAPSED_LIMIT;
+
+                return (
+                  <Card className="rounded-[16px]">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-[14px] font-[600] text-foreground flex items-center gap-2">
+                          <Globe className="h-4 w-4 text-amethyst" strokeWidth={1.8} />
+                          Profile History
+                        </CardTitle>
+                        <span className="text-[11px] font-[460] text-muted-foreground">
+                          {sortedHistory.length} event{sortedHistory.length !== 1 ? "s" : ""}
+                        </span>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+                    </CardHeader>
+                    <CardContent>
+                      <ProfileHistoryTimeline events={sortedHistory} collapsedLimit={COLLAPSED_LIMIT} />
+                    </CardContent>
+                  </Card>
+                );
+              })()}
 
               {/* Plan Attachments — split by ownership */}
               {planAttachments.length > 0 && (() => {
@@ -1549,15 +2009,16 @@ export default function CustomerProfilePage() {
                             onChange={(e) => setCustomTo(e.target.value)}
                             className="rounded-[8px] border border-border bg-background px-2 py-1 text-[12px] font-[460] text-foreground outline-none focus:border-lavender" />
                           <button
-                            onClick={() => { if (customFrom && customTo && selectedSerial) loadServiceData(selectedSerial); }}
+                            onClick={() => { if (customFrom && customTo && selectedSerial) loadServiceData(selectedSerial, true); }}
                             disabled={!customFrom || !customTo}
                             className="rounded-[8px] bg-cream text-charcoal px-3 py-1 text-[12px] font-[600] hover:bg-cream-hover disabled:opacity-40 cursor-pointer">
                             Go
                           </button>
                         </div>
                       )}
-                      <button onClick={() => selectedSerial && loadServiceData(selectedSerial)}
-                        className="ml-1 rounded-[8px] p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition-colors">
+                      <button onClick={() => selectedSerial && loadServiceData(selectedSerial, true)}
+                        className="ml-1 rounded-[8px] p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition-colors"
+                        title="Force refresh">
                         <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.8} />
                       </button>
                     </div>
@@ -1598,10 +2059,21 @@ export default function CustomerProfilePage() {
                   ) : (
                     <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
                       <TrendingUp className="h-8 w-8 mb-2 opacity-20" strokeWidth={1.5} />
-                      <p className="text-[13px] font-[460]">No usage data for the selected period</p>
-                      <p className="text-[11px] font-[460] text-muted-foreground/60 mt-1">
-                        {cdrTotal === 0 ? "No data sessions recorded for this serial" : "Try expanding the date range"}
-                      </p>
+                      {cdrError ? (
+                        <>
+                          <p className="text-[13px] font-[600] text-amber-600">Usage information not available</p>
+                          <p className="text-[11px] font-[460] text-muted-foreground/60 mt-1">
+                            CDR data source could not be reached for this product type. Contact engineering if this persists.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[13px] font-[460]">No usage data for the selected period</p>
+                          <p className="text-[11px] font-[460] text-muted-foreground/60 mt-1">
+                            {cdrTotal === 0 ? "No data sessions recorded for this serial" : "Try expanding the date range"}
+                          </p>
+                        </>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -1710,6 +2182,8 @@ export default function CustomerProfilePage() {
                   )}
                 </Card>
               )}
+            </>
+          )}
             </>
           )}
 
@@ -1896,29 +2370,57 @@ export default function CustomerProfilePage() {
                 <Smartphone className="h-4 w-4 text-charcoal/70" strokeWidth={1.8} />
                 {productType === "esim" ? "eSIM" : productType === "sapphire" ? "Device (IMEI)" : "Device"}
               </CardTitle>
-              <p className="text-[11px] font-[460] text-charcoal/60">Click to reload live status</p>
+              {serviceCachedAt && selectedSerial && !serviceLoading ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-[460] text-charcoal/50">
+                    Cached {Math.floor((Date.now() - serviceCachedAt) / 60000)}m ago
+                  </span>
+                  <button
+                    onClick={() => selectedSerial && loadServiceData(selectedSerial, true)}
+                    className="text-[11px] font-[540] text-amethyst hover:text-amethyst/80 cursor-pointer transition-colors flex items-center gap-1"
+                  >
+                    <RefreshCw className="h-3 w-3" strokeWidth={2} />
+                    Sync
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[11px] font-[460] text-charcoal/60">Click to load live status</p>
+              )}
             </div>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
               {serials.map((s) => (
-                <button key={s} onClick={() => loadServiceData(s)}
-                  className={cn(
-                    "flex items-center gap-2 rounded-[8px] border-2 px-4 py-2.5 text-[13px] font-mono font-[600] transition-all cursor-pointer",
-                    selectedSerial === s
-                      ? "border-charcoal bg-cream text-charcoal"
-                      : "border-parchment bg-background text-charcoal hover:border-charcoal/40 hover:bg-cream/40"
-                  )}>
-                  {selectedSerial === s && serviceLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-charcoal/70" />
-                  ) : (
-                    <Wifi className="h-4 w-4 text-charcoal/70" strokeWidth={1.8} />
-                  )}
-                  {s}
-                  {selectedSerial === s && serviceLoading && (
-                    <span className="text-[11px] font-[500] text-charcoal/70 ml-1">Loading...</span>
-                  )}
-                </button>
+                <div key={s} className="flex items-center gap-1">
+                  <button onClick={() => loadServiceData(s)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-[8px] border-2 px-4 py-2.5 text-[13px] font-mono font-[600] transition-all cursor-pointer",
+                      selectedSerial === s
+                        ? "border-charcoal bg-cream text-charcoal"
+                        : "border-parchment bg-background text-charcoal hover:border-charcoal/40 hover:bg-cream/40"
+                    )}>
+                    {selectedSerial === s && serviceLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-charcoal/70" />
+                    ) : (
+                      <Wifi className="h-4 w-4 text-charcoal/70" strokeWidth={1.8} />
+                    )}
+                    {s}
+                    {selectedSerial === s && serviceLoading && (
+                      <span className="text-[11px] font-[500] text-charcoal/70 ml-1">Loading...</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); copy(s, `serial-${s}`); }}
+                    className="p-1.5 rounded-[8px] hover:bg-cream transition-colors cursor-pointer"
+                    title="Copy to clipboard"
+                  >
+                    {copiedField === `serial-${s}` ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success" strokeWidth={1.8} />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5 text-charcoal/40 hover:text-charcoal/70" strokeWidth={1.8} />
+                    )}
+                  </button>
+                </div>
               ))}
             </div>
             {selectedSerial && serviceLoading && (
@@ -2353,6 +2855,75 @@ function InfoCell({ icon: Icon, label, value }: { icon: React.ElementType; label
         <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60">{label}</p>
       </div>
       <p className="text-[14px] font-[540] text-foreground">{value}</p>
+    </div>
+  );
+}
+
+/** Compact fact pill: icon + small-caps label + value. Used in the Quick Facts strip. */
+function QuickFact({ icon: Icon, label, value, sub, tone = "neutral" }: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "neutral" | "success" | "warning" | "muted";
+}) {
+  const color = tone === "success" ? "text-success"
+    : tone === "warning" ? "text-fraud-yellow"
+    : tone === "muted" ? "text-charcoal/50"
+    : "text-charcoal";
+  return (
+    <div className="flex items-start gap-2 min-w-0">
+      <Icon className={cn("h-4 w-4 mt-0.5 shrink-0", color)} strokeWidth={1.8} />
+      <div className="min-w-0">
+        <p className="text-[10px] font-[600] uppercase tracking-wider text-charcoal/50 leading-none">{label}</p>
+        <p className={cn("text-[13px] font-[540] tabular-nums mt-1 truncate", color)}>{value}</p>
+        {sub && <p className="text-[11px] font-[460] text-charcoal/50 mt-0.5 truncate">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** Rental quick-facts strip — one row of pills surfacing what a support agent needs on a live call. */
+function QuickFactsRental({
+  paidAt, amount, currency, tripStart, tripEnd, totalDays, tracking, cdrBytes, isAwaitingFulfillment,
+}: {
+  paidAt?: string | number;
+  amount?: number;
+  currency: string;
+  tripStart?: string;
+  tripEnd?: string;
+  totalDays: number | null;
+  tracking: NonNullable<Order["tracking_information"]>;
+  cdrBytes: number;
+  isAwaitingFulfillment: boolean;
+}) {
+  const paidValue = amount != null ? `${Number(amount).toFixed(0)} ${currency}` : "—";
+  const paidSub = paidAt ? formatDate(paidAt) : undefined;
+
+  const tripValue = tripStart && tripEnd
+    ? `${formatDate(tripStart)} → ${formatDate(tripEnd)}`
+    : "—";
+  const tripSub = totalDays !== null ? `${totalDays} day${totalDays === 1 ? "" : "s"}` : undefined;
+
+  // Shipment status: derive from tracking_information. If any leg has an outbound number → shipped.
+  const firstLeg = tracking[0];
+  const hasOutbound = !!firstLeg?.shipping_tracking_number;
+  const shipCarrier = firstLeg?.shipping_carrier;
+  const shipValue = isAwaitingFulfillment ? "Not yet fulfilled"
+    : hasOutbound ? "Shipped"
+    : "No tracking yet";
+  const shipSub = hasOutbound && shipCarrier ? `${shipCarrier} · ${firstLeg?.shipping_tracking_number || ""}` : undefined;
+  const shipTone = isAwaitingFulfillment ? "warning" : hasOutbound ? "success" : "muted";
+
+  const usageValue = cdrBytes > 0 ? formatBytes(cdrBytes) : "No data yet";
+  const usageTone = cdrBytes > 0 ? "neutral" : "muted";
+
+  return (
+    <div className="rounded-[8px] border border-parchment bg-background px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+      <QuickFact icon={DollarSign} label="Paid" value={paidValue} sub={paidSub} />
+      <QuickFact icon={Plane} label="Trip" value={tripValue} sub={tripSub} />
+      <QuickFact icon={Truck} label="Shipping" value={shipValue} sub={shipSub} tone={shipTone} />
+      <QuickFact icon={Wifi} label="Usage" value={usageValue} sub="in trip window" tone={usageTone} />
     </div>
   );
 }
@@ -3462,12 +4033,19 @@ interface SapphireDeviceCardProps {
   productType: "esim" | "rental" | "sapphire" | "unknown";
   onCopy: (value: string) => void;
   copied: boolean;
+  terminalStatus: Record<string, unknown> | null;
+  terminalStatusLoading: boolean;
+  terminalStatusError: string | null;
+  terminalStatusCachedAt: number | null;
+  onSyncTerminalStatus: () => void;
 }
 
 function SapphireDeviceCard({
   imei, deviceInfo, deviceInfoError, userOffers, allOrders, cdrRecords, cdrTotal, dailyUsage,
   packageSku, tripStart, tripEnd, orderCreatedAt, productType, onCopy, copied,
+  terminalStatus, terminalStatusLoading, terminalStatusError, terminalStatusCachedAt, onSyncTerminalStatus,
 }: SapphireDeviceCardProps) {
+  const [kbOpen, setKbOpen] = useState(false);
   const parsed = parsePlanSku(packageSku);
   const flag = parsed ? getCountryFlag(parsed.countryCode) : "";
 
@@ -3545,8 +4123,8 @@ function SapphireDeviceCard({
 
           {/* Title block */}
           <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-[600] uppercase tracking-wider text-amethyst/70">Sapphire Device</p>
-            <h3 className="text-[16px] font-[540] text-foreground truncate">{deviceName.name}</h3>
+            <p className="text-[11px] font-[600] uppercase tracking-wider text-amethyst/70">{isRental ? "Rental Device" : "Sapphire Device"}</p>
+            <h3 className="text-[16px] font-[540] text-foreground truncate">{isRental ? `Rental device${deviceName.code ? ` (${deviceName.code})` : ""}` : deviceName.name}</h3>
             {packageSku && (
               <p className="text-[12px] font-[460] text-muted-foreground mt-0.5 truncate">
                 {flag && <span className="mr-1">{flag}</span>}
@@ -3631,9 +4209,156 @@ function SapphireDeviceCard({
                 )}
               </div>
             )}
+            {terminalType && (
+              <button
+                onClick={() => setKbOpen(true)}
+                className="flex items-center gap-1.5 rounded-[8px] border border-lavender/40 bg-background hover:bg-lavender/10 text-amethyst px-2.5 py-1 cursor-pointer transition-colors text-[11px] font-[600]"
+              >
+                <BookOpen className="h-3 w-3" strokeWidth={1.8} />
+                Device KB
+              </button>
+            )}
           </div>
         </div>
       </CardHeader>
+      <KbSlideOver
+        open={kbOpen}
+        onOpenChange={setKbOpen}
+        modelCode={terminalType}
+        deviceLabel={isRental ? `Rental device${deviceName.code ? ` (${deviceName.code})` : ""}` : deviceName.name}
+      />
+
+      {/* ─── Network Status (real-time terminal monitor) ─── */}
+      <div className="px-6 pb-2">
+        <div className="rounded-[8px] border border-lavender/20 bg-background p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Radio className="h-3.5 w-3.5 text-amethyst/70" strokeWidth={1.8} />
+              <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/70">Network Status</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {terminalStatusCachedAt && (
+                <p className="text-[10px] font-[460] text-muted-foreground/50">
+                  {(() => {
+                    const ago = Math.round((Date.now() - terminalStatusCachedAt) / 1000);
+                    if (ago < 60) return "just now";
+                    if (ago < 3600) return `${Math.floor(ago / 60)}m ago`;
+                    return `${Math.floor(ago / 3600)}h ago`;
+                  })()}
+                  {" · cached"}
+                </p>
+              )}
+              <button
+                onClick={onSyncTerminalStatus}
+                disabled={terminalStatusLoading}
+                className="flex items-center gap-1 rounded-[8px] border border-lavender/40 bg-background hover:bg-lavender/10 text-amethyst px-2 py-0.5 cursor-pointer transition-colors text-[10px] font-[600] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {terminalStatusLoading ? (
+                  <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.8} />
+                ) : (
+                  <RefreshCw className="h-3 w-3" strokeWidth={1.8} />
+                )}
+                Sync
+              </button>
+            </div>
+          </div>
+
+          {terminalStatusError && !terminalStatus && (
+            <div className="flex items-center gap-1.5 text-[11px] font-[460] text-muted-foreground/60">
+              <WifiOff className="h-3 w-3" strokeWidth={1.8} />
+              <span>{terminalStatusError}</span>
+            </div>
+          )}
+
+          {terminalStatus && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+              {/* Online status */}
+              <div>
+                <p className="text-[10px] font-[600] uppercase tracking-wider text-muted-foreground/50 mb-0.5">Status</p>
+                <div className="flex items-center gap-1.5">
+                  {String(terminalStatus.isOnline) === "1" || terminalStatus.isOnline === true ? (
+                    <>
+                      <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+                      <span className="text-[13px] font-[540] text-success">Online</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                      <span className="text-[13px] font-[540] text-muted-foreground">Offline</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* RAT / Network type */}
+              <div>
+                <p className="text-[10px] font-[600] uppercase tracking-wider text-muted-foreground/50 mb-0.5">RAT</p>
+                <p className="text-[13px] font-[540] text-foreground font-mono">
+                  {(terminalStatus.network as string) || "—"}
+                </p>
+              </div>
+
+              {/* MCC/MNC */}
+              <div>
+                <p className="text-[10px] font-[600] uppercase tracking-wider text-muted-foreground/50 mb-0.5">MCC / MNC</p>
+                <p className="text-[13px] font-[540] text-foreground font-mono">
+                  {(terminalStatus.mcc as string) || "—"}{(terminalStatus.mnc as string) ? ` / ${terminalStatus.mnc}` : ""}
+                </p>
+              </div>
+
+              {/* Signal strength */}
+              <div>
+                <p className="text-[10px] font-[600] uppercase tracking-wider text-muted-foreground/50 mb-0.5">Signal</p>
+                <div className="flex items-center gap-1.5">
+                  <Signal className="h-3 w-3 text-amethyst/60" strokeWidth={1.8} />
+                  <p className="text-[13px] font-[540] text-foreground font-mono">
+                    {(terminalStatus.signalStrength as string) || "—"}
+                  </p>
+                </div>
+              </div>
+
+              {/* LAC */}
+              {(terminalStatus.lac as string) && (
+                <div>
+                  <p className="text-[10px] font-[600] uppercase tracking-wider text-muted-foreground/50 mb-0.5">LAC</p>
+                  <p className="text-[13px] font-[540] text-foreground font-mono">{terminalStatus.lac as string}</p>
+                </div>
+              )}
+
+              {/* Cell ID */}
+              {(terminalStatus.cellId as string) && (
+                <div>
+                  <p className="text-[10px] font-[600] uppercase tracking-wider text-muted-foreground/50 mb-0.5">Cell ID</p>
+                  <p className="text-[13px] font-[540] text-foreground font-mono">{terminalStatus.cellId as string}</p>
+                </div>
+              )}
+
+              {/* Operator name */}
+              {(terminalStatus.operatorName as string) && (
+                <div>
+                  <p className="text-[10px] font-[600] uppercase tracking-wider text-muted-foreground/50 mb-0.5">Operator</p>
+                  <p className="text-[13px] font-[540] text-foreground">{terminalStatus.operatorName as string}</p>
+                </div>
+              )}
+
+              {/* IP */}
+              {(terminalStatus.ip as string) && (
+                <div>
+                  <p className="text-[10px] font-[600] uppercase tracking-wider text-muted-foreground/50 mb-0.5">IP</p>
+                  <p className="text-[13px] font-[540] text-foreground font-mono">{terminalStatus.ip as string}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!terminalStatus && !terminalStatusError && !terminalStatusLoading && (
+            <p className="text-[11px] font-[460] text-muted-foreground/50">
+              Click Sync to fetch real-time network status from the device.
+            </p>
+          )}
+        </div>
+      </div>
+
       <CardContent className="space-y-4">
         {/* Header summary — rentals show trip-scoped numbers; Sapphire/owned show fleet-wide. */}
         {isRental ? (
