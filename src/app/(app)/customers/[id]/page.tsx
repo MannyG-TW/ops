@@ -63,6 +63,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { InternalNotes, TEAM_MEMBERS } from "@/components/ui/internal-notes";
 import { CancelDialog } from "@/components/order-actions/cancel-dialog";
 import { RefundDialog } from "@/components/order-actions/refund-dialog";
+import { ConnectivityDialog } from "@/components/order-actions/connectivity-dialog";
 import { KbSlideOver } from "@/components/kb-slide-over";
 import { Input } from "@/components/ui/input";
 import { fetchOS, fetchTelliSIM, getTelliSIMCredentials } from "@/lib/settings-client";
@@ -564,6 +565,7 @@ export default function CustomerProfilePage() {
   const [actionsInfoOpen, setActionsInfoOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+  const [connectivityDialogOpen, setConnectivityDialogOpen] = useState(false);
   const [escalateDialogOpen, setEscalateDialogOpen] = useState(false);
   const [escalateNote, setEscalateNote] = useState("");
   const [escalateLoading, setEscalateLoading] = useState(false);
@@ -1321,6 +1323,9 @@ export default function CustomerProfilePage() {
                     </Button>
                     <Button size="sm" title="Resend eSIM QR code to customer (TelliSIM)" className="h-7 rounded-[8px] bg-cream text-charcoal text-[11px] font-[600] hover:bg-cream-hover cursor-pointer px-2 opacity-50" disabled>
                       <Send className="h-3 w-3" strokeWidth={2} /> Resend
+                    </Button>
+                    <Button size="sm" onClick={() => setConnectivityDialogOpen(true)} className="h-7 rounded-[8px] bg-fraud-yellow-soft text-fraud-yellow text-[11px] font-[600] hover:bg-fraud-yellow/20 cursor-pointer px-2">
+                      <Signal className="h-3 w-3" strokeWidth={2} /> Connectivity
                     </Button>
                   </>
                 )}
@@ -2793,6 +2798,16 @@ export default function CustomerProfilePage() {
         open={refundDialogOpen}
         onClose={() => setRefundDialogOpen(false)}
         order={selectedOrder || { id: "" }}
+        agentName={TEAM_MEMBERS.find((m) => m.email === (typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") : ""))?.name || "Agent"}
+        agentId={typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") || "" : ""}
+      />
+
+      {/* ─── Connectivity Report Dialog ─── */}
+      <ConnectivityDialog
+        open={connectivityDialogOpen}
+        onClose={() => setConnectivityDialogOpen(false)}
+        order={selectedOrder || { id: "" }}
+        iccid={selectedSerial || ""}
         agentName={TEAM_MEMBERS.find((m) => m.email === (typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") : ""))?.name || "Agent"}
         agentId={typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") || "" : ""}
       />
