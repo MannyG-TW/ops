@@ -62,6 +62,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { InternalNotes, TEAM_MEMBERS } from "@/components/ui/internal-notes";
 import { CancelDialog } from "@/components/order-actions/cancel-dialog";
+import { RefundDialog } from "@/components/order-actions/refund-dialog";
 import { KbSlideOver } from "@/components/kb-slide-over";
 import { Input } from "@/components/ui/input";
 import { fetchOS, fetchTelliSIM, getTelliSIMCredentials } from "@/lib/settings-client";
@@ -562,6 +563,7 @@ export default function CustomerProfilePage() {
   // Action dialogs state
   const [actionsInfoOpen, setActionsInfoOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [escalateDialogOpen, setEscalateDialogOpen] = useState(false);
   const [escalateNote, setEscalateNote] = useState("");
   const [escalateLoading, setEscalateLoading] = useState(false);
@@ -1324,6 +1326,9 @@ export default function CustomerProfilePage() {
                 )}
                 <Button size="sm" onClick={() => setCancelDialogOpen(true)} className="h-7 rounded-[8px] bg-fraud-red-soft text-fraud-red text-[11px] font-[600] hover:bg-fraud-red/20 cursor-pointer px-2">
                   <XCircle className="h-3 w-3" strokeWidth={2} /> Cancel
+                </Button>
+                <Button size="sm" onClick={() => setRefundDialogOpen(true)} className="h-7 rounded-[8px] bg-lavender/20 text-amethyst text-[11px] font-[600] hover:bg-lavender/30 cursor-pointer px-2">
+                  <DollarSign className="h-3 w-3" strokeWidth={2} /> Refund
                 </Button>
                 <Button size="sm" onClick={() => { setEscalateDialogOpen(true); setEscalateNote(""); }} className="h-7 rounded-[8px] bg-lavender/20 text-amethyst text-[11px] font-[600] hover:bg-lavender/30 cursor-pointer px-2">
                   <ArrowUpRight className="h-3 w-3" strokeWidth={2} /> Escalate
@@ -2778,6 +2783,15 @@ export default function CustomerProfilePage() {
       <CancelDialog
         open={cancelDialogOpen}
         onClose={() => setCancelDialogOpen(false)}
+        order={selectedOrder || { id: "" }}
+        agentName={TEAM_MEMBERS.find((m) => m.email === (typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") : ""))?.name || "Agent"}
+        agentId={typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") || "" : ""}
+      />
+
+      {/* ─── Refund Dialog ─── */}
+      <RefundDialog
+        open={refundDialogOpen}
+        onClose={() => setRefundDialogOpen(false)}
         order={selectedOrder || { id: "" }}
         agentName={TEAM_MEMBERS.find((m) => m.email === (typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") : ""))?.name || "Agent"}
         agentId={typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") || "" : ""}
