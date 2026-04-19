@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { getCountryFlag } from "@/lib/country-flags";
 import { getCountryName } from "@/lib/countries";
@@ -37,12 +36,6 @@ interface ConnectivityAlert {
   windowHours: number;
 }
 
-interface TopCountry {
-  country: string;
-  count: number;
-  latestAt: string;
-  aboveThreshold: boolean;
-}
 
 interface Trends {
   connectivity: { current: number; prior: number; change: number };
@@ -62,21 +55,14 @@ interface FraudReport {
   createdAt: string;
 }
 
-interface RecentAction {
-  id: string;
-  type: string;
-  agent: string;
-  orderNumber: string;
-  createdAt: string;
-}
 
 interface DashboardSummary {
   ok: boolean;
   connectivityAlerts: ConnectivityAlert[];
-  topCountries: TopCountry[];
+
   trends: Trends;
   fraudReports: FraudReport[];
-  recentActions: RecentAction[];
+
   config: { connectivityThreshold: number; connectivityWindowHours: number };
 }
 
@@ -92,25 +78,6 @@ interface BroadcastMessage {
 
 // ─── Helpers ────────────────────────────────────────────────
 
-function actionTypeBadgeClass(type: string): string {
-  switch (type.toLowerCase()) {
-    case "fraud":
-      return "bg-fraud-red-soft text-fraud-red border-fraud-red/20";
-    case "cancel":
-    case "cancellation":
-      return "bg-fraud-red-soft text-fraud-red border-fraud-red/20";
-    case "refund":
-      return "bg-fraud-yellow-soft text-fraud-yellow border-fraud-yellow/20";
-    case "connectivity":
-      return "bg-amethyst/10 text-amethyst border-amethyst/20";
-    default:
-      return "bg-muted text-muted-foreground border-border";
-  }
-}
-
-function formatActionType(type: string): string {
-  return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
-}
 
 function TrendBadge({ change, prefix }: { change: number; prefix?: string }) {
   if (change === 0) {
@@ -193,10 +160,8 @@ export default function DashboardPage() {
 
   const trends = summary?.trends;
   const alerts = summary?.connectivityAlerts ?? [];
-  const topCountries = summary?.topCountries ?? [];
+
   const fraudReports = summary?.fraudReports ?? [];
-  const recentActions = summary?.recentActions ?? [];
-  const maxCountryCount = topCountries.length > 0 ? topCountries[0].count : 1;
 
   function refreshLabel() {
     if (secondsSinceRefresh < 5) return "just now";
@@ -420,10 +385,8 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* ── Section 3: Two-Column Layout ── */}
-        <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-          {/* ── Left Column ── */}
-          <div className="space-y-6">
+        {/* ── Section 3: Fraud Alerts & Broadcasts ── */}
+        <div className="space-y-6">
 
             {/* Fraud Alerts */}
             <section>
@@ -568,140 +531,6 @@ export default function DashboardPage() {
                 </div>
               )}
             </section>
-          </div>
-
-          {/* ── Right Column (340px) ── */}
-          <div className="space-y-6">
-
-            {/* Top Reported Countries */}
-            <section>
-              <div className="mb-3 flex items-center gap-2">
-                <Globe className="h-4 w-4 text-amethyst" strokeWidth={2} />
-                <h2
-                  className="text-[12px] uppercase tracking-wider text-charcoal"
-                  style={{ fontWeight: 600 }}
-                >
-                  Top Countries
-                </h2>
-              </div>
-
-              <Card>
-                <ScrollArea className="h-[280px]">
-                  <div className="divide-y divide-border/50">
-                    {topCountries.length === 0 ? (
-                      <div className="px-4 py-6 text-center text-[13px] text-muted-foreground" style={{ fontWeight: 460 }}>
-                        No data yet
-                      </div>
-                    ) : (
-                      topCountries.map((c) => (
-                        <div key={c.country} className="px-4 py-2.5">
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="text-[14px] leading-none">
-                                {getCountryFlag(c.country)}
-                              </span>
-                              <span
-                                className={cn(
-                                  "text-[12px] truncate",
-                                  c.aboveThreshold
-                                    ? "text-fraud-red"
-                                    : "text-charcoal"
-                                )}
-                                style={{ fontWeight: 460 }}
-                              >
-                                {getCountryName(c.country)}
-                              </span>
-                            </div>
-                            <span
-                              className={cn(
-                                "shrink-0 text-[12px] tabular-nums",
-                                c.aboveThreshold
-                                  ? "text-fraud-red"
-                                  : "text-charcoal"
-                              )}
-                              style={{ fontWeight: 600 }}
-                            >
-                              {c.count}
-                            </span>
-                          </div>
-                          <div className="h-1 w-full rounded-full bg-border/40 overflow-hidden">
-                            <div
-                              className={cn(
-                                "h-full rounded-full",
-                                c.aboveThreshold ? "bg-fraud-red" : "bg-amethyst"
-                              )}
-                              style={{
-                                width: `${Math.max(4, (c.count / maxCountryCount) * 100)}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </ScrollArea>
-              </Card>
-            </section>
-
-            {/* Recent Activity Feed */}
-            <section>
-              <div className="mb-3 flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 text-amethyst" strokeWidth={2} />
-                <h2
-                  className="text-[12px] uppercase tracking-wider text-charcoal"
-                  style={{ fontWeight: 600 }}
-                >
-                  Recent Activity
-                </h2>
-              </div>
-
-              <Card>
-                <ScrollArea className="h-[360px]">
-                  <div className="divide-y divide-border/50">
-                    {recentActions.length === 0 ? (
-                      <div className="px-4 py-6 text-center text-[13px] text-muted-foreground" style={{ fontWeight: 460 }}>
-                        No recent activity
-                      </div>
-                    ) : (
-                      recentActions.map((item) => (
-                        <div key={item.id} className="px-4 py-3 hover:bg-cream/30 transition-colors">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span
-                                  className="text-[12px] text-charcoal"
-                                  style={{ fontWeight: 540 }}
-                                >
-                                  {item.agent}
-                                </span>
-                                <span
-                                  className={cn(
-                                    "inline-block rounded-[8px] border px-1.5 py-0.5 text-[10px]",
-                                    actionTypeBadgeClass(item.type)
-                                  )}
-                                  style={{ fontWeight: 600 }}
-                                >
-                                  {formatActionType(item.type)}
-                                </span>
-                              </div>
-                              <p className="mt-0.5 text-[11px] text-muted-foreground truncate" style={{ fontWeight: 460 }}>
-                                {item.orderNumber}
-                              </p>
-                            </div>
-                            <span className="shrink-0 text-[10px] text-muted-foreground/70">
-                              {formatDistanceToNow(new Date(item.createdAt), {
-                                addSuffix: true,
-                              })}
-                            </span>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </ScrollArea>
-              </Card>
-            </section>
-          </div>
         </div>
       </div>
     </div>
