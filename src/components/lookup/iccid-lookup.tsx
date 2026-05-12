@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Search,
   Signal,
@@ -147,7 +147,12 @@ export function IccidLookup() {
     setCdrLoading(true);
     setCdrError(null);
     setCdrRows([]);
-    fetchOS("/api/opensearch/cdr", { iccid: trimmed, size: 20 })
+    fetchOS("/api/opensearch/cdr", {
+      iccid: trimmed,
+      size: 500,
+      from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      to: new Date().toISOString(),
+    })
       .then(
         (d: AnyRecord) => {
           const records =
@@ -414,62 +419,182 @@ export function IccidLookup() {
             </div>
           </LookupCard>
 
-          {/* Recent CDR (full width) */}
+          {/* Data Usage (full width) — chart + table */}
           <LookupCard
-            title="Recent CDR"
+            title="Data Usage"
             icon={<Activity className="h-3.5 w-3.5 text-amethyst" />}
             loading={cdrLoading}
             error={cdrError}
             empty={cdrRows.length === 0 && !cdrLoading && !cdrError}
+            badge={cdrRows.length > 0 ? {
+              label: `${formatBytes(cdrRows.reduce((sum, r) => sum + Number(r.TOTAL_QTY || r.total_qty || 0), 0))} total`,
+              className: "bg-lavender/20 text-amethyst",
+            } : null}
             fullWidth
           >
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
-                <thead>
-                  <tr className="border-b border-parchment text-left text-muted-foreground font-[460]">
-                    <th className="pb-2 pr-4 font-[460]">Date</th>
-                    <th className="pb-2 pr-4 font-[460]">Usage</th>
-                    <th className="pb-2 pr-4 font-[460]">Network</th>
-                    <th className="pb-2 font-[460]">Country</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cdrRows.slice(0, 20).map((row, i) => {
-                    const src = (
-                      row._source ? row._source : row
-                    ) as AnyRecord;
-                    // TelliSIM CDR fields
-                    const date = String(
-                      src.USAGE_DATE_UTC || src.ConnectTime || src.date || ""
-                    );
-                    const usage = Number(
-                      src.TOTAL_QTY ?? src.total_qty ?? NaN
-                    );
-                    const narrative = String(src.Narrative || "");
-                    const network = String(src.NETWORK || src.network || "");
-                    const country = String(src.COUNTRY || src.country || "");
-                    return (
-                      <tr
-                        key={i}
-                        className="border-b border-parchment/50 text-charcoal font-[460]"
-                      >
-                        <td className="py-1.5 pr-4">{date.slice(0, 16)}</td>
-                        <td className="py-1.5 pr-4">
-                          {!isNaN(usage)
-                            ? formatBytes(usage)
-                            : narrative || "—"}
-                        </td>
-                        <td className="py-1.5 pr-4">{network || "—"}</td>
-                        <td className="py-1.5">{country || "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <IccidUsageChart data={cdrRows} />
           </LookupCard>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Daily usage chart + table for ICCID CDR data */
+function IccidUsageChart({ data }: { data: AnyRecord[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  // Aggregate by day
+  const dailyMap = new Map<string, { bytes: number; sessions: number; country: string }>();
+  for (const row of data) {
+    const dateStr = String(row.USAGE_DATE_UTC || row.ConnectTime || row.date || "");
+    const day = dateStr.slice(0, 10);
+    if (!day) continue;
+    const bytes = Number(row.TOTAL_QTY || row.total_qty || 0);
+    const country = String(row.iso2 || row.COUNTRY || row.country || "");
+    const prev = dailyMap.get(day) || { bytes: 0, sessions: 0, country };
+    dailyMap.set(day, { bytes: prev.bytes + bytes, sessions: prev.sessions + 1, country: country || prev.country });
+  }
+  const daily = Array.from(dailyMap.entries())
+    .map(([date, v]) => ({ date, ...v }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (daily.length === 0) return <p className="text-[12px] font-[460] text-muted-foreground">No usage data</p>;
+
+  // Chart
+  const W = 600, H = 160, padT = 16, padB = 8, padX = 8;
+  const plotH = H - padT - padB, plotW = W - padX * 2;
+  const maxBytes = Math.max(...daily.map((d) => d.bytes), 1);
+  const chartMax = maxBytes * 1.15;
+  const labelInterval = daily.length > 14 ? Math.ceil(daily.length / 10) : 1;
+
+  const pts = daily.map((d, i) => {
+    const x = daily.length === 1 ? W / 2 : padX + (plotW * i) / (daily.length - 1);
+    const y = d.bytes > 0 ? padT + plotH * (1 - d.bytes / chartMax) : padT + plotH;
+    return { x, y, ...d };
+  });
+
+  const smoothPath = (() => {
+    if (pts.length < 2) return "";
+    if (pts.length === 2) return `M${pts[0].x},${pts[0].y}L${pts[1].x},${pts[1].y}`;
+    const t = 0.3;
+    let d = `M${pts[0].x},${pts[0].y}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+      d += `C${p1.x + (p2.x - p0.x) * t},${p1.y + (p2.y - p0.y) * t} ${p2.x - (p3.x - p1.x) * t},${p2.y - (p3.y - p1.y) * t} ${p2.x},${p2.y}`;
+    }
+    return d;
+  })();
+  const areaPath = smoothPath ? `${smoothPath}L${pts[pts.length - 1].x},${padT + plotH}L${pts[0].x},${padT + plotH}Z` : "";
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect || daily.length < 2) return;
+    const mouseX = ((e.clientX - rect.left) / rect.width) * W;
+    let closest = 0, closestDist = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const dist = Math.abs(pts[i].x - mouseX);
+      if (dist < closestDist) { closestDist = dist; closest = i; }
+    }
+    setHoveredIdx(closest);
+  };
+
+  const gridYs = [0.25, 0.5, 0.75].map((pct) => padT + plotH * pct);
+
+  return (
+    <div>
+      <div className="flex">
+        <div className="flex flex-col justify-between pr-2" style={{ height: H, width: 48 }}>
+          <span className="text-[10px] font-mono font-[500] text-muted-foreground text-right">{formatBytes(maxBytes)}</span>
+          <span className="text-[10px] font-mono font-[460] text-muted-foreground/40 text-right">{formatBytes(maxBytes / 2)}</span>
+          <span className="text-[10px] font-mono font-[460] text-muted-foreground/40 text-right">0</span>
+        </div>
+        <div ref={containerRef} className="flex-1 relative cursor-crosshair" style={{ height: H }} onMouseMove={handleMouseMove} onMouseLeave={() => setHoveredIdx(null)}>
+          <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full">
+            <defs>
+              <linearGradient id="iccidUsageGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--color-lavender)" stopOpacity="0.18" />
+                <stop offset="100%" stopColor="var(--color-lavender)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {gridYs.map((gy, i) => (
+              <line key={i} x1={padX} y1={gy} x2={W - padX} y2={gy} stroke="var(--color-parchment)" strokeWidth="1" strokeDasharray="4 4" strokeOpacity="0.6" />
+            ))}
+            <line x1={padX} y1={padT + plotH} x2={W - padX} y2={padT + plotH} stroke="var(--color-parchment)" strokeWidth="1" strokeOpacity="0.4" />
+            {areaPath && <path d={areaPath} fill="url(#iccidUsageGrad)" />}
+            {smoothPath && <path d={smoothPath} fill="none" stroke="var(--color-amethyst)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+            {hoveredIdx !== null && (
+              <line x1={pts[hoveredIdx].x} y1={padT} x2={pts[hoveredIdx].x} y2={padT + plotH} stroke="var(--color-amethyst)" strokeWidth="1" strokeOpacity="0.3" strokeDasharray="3 3" />
+            )}
+            {pts.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y}
+                r={hoveredIdx === i ? 5 : (daily.length <= 14 && p.bytes > 0) ? 2.5 : 0}
+                fill={hoveredIdx === i ? "var(--color-amethyst)" : "var(--color-lavender)"}
+                stroke={hoveredIdx === i ? "white" : "none"} strokeWidth={hoveredIdx === i ? 2 : 0}
+                className="transition-all duration-150"
+              />
+            ))}
+          </svg>
+          {hoveredIdx !== null && (
+            <div className="absolute z-10 pointer-events-none" style={{
+              left: `${(pts[hoveredIdx].x / W) * 100}%`,
+              top: `${(pts[hoveredIdx].y / H) * 100}%`,
+              transform: "translate(-50%, calc(-100% - 12px))",
+            }}>
+              <div className="rounded-[8px] bg-mysteria text-white px-3 py-2 text-[11px] font-[500] whitespace-nowrap shadow-lg">
+                <div className="font-[600] text-[12px]">{formatBytes(daily[hoveredIdx].bytes)}</div>
+                <div className="text-white/60 mt-0.5">
+                  {new Date(daily[hoveredIdx].date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                  {daily[hoveredIdx].country && ` · ${daily[hoveredIdx].country}`}
+                  {` · ${daily[hoveredIdx].sessions} record${daily[hoveredIdx].sessions !== 1 ? "s" : ""}`}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      {/* X-axis */}
+      <div className="flex mt-1" style={{ paddingLeft: 48 }}>
+        <div className="flex-1 flex" style={{ gap: 2 }}>
+          {daily.map((d, i) => (
+            <div key={i} className="flex-1 text-center">
+              {(i % labelInterval === 0 || i === daily.length - 1) && (
+                <span className={`text-[9px] font-[460] leading-tight block ${d.bytes > 0 ? "text-muted-foreground" : "text-muted-foreground/30"}`}>
+                  {new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Daily table */}
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="border-b border-parchment text-left text-muted-foreground font-[460]">
+              <th className="pb-2 pr-3 font-[460]">Date</th>
+              <th className="pb-2 pr-3 font-[460]">Records</th>
+              <th className="pb-2 pr-3 font-[460]">Data</th>
+              <th className="pb-2 font-[460]">Country</th>
+            </tr>
+          </thead>
+          <tbody>
+            {daily.map((d, i) => {
+              const mb = d.bytes / (1024 * 1024);
+              const display = mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+              return (
+                <tr key={i} className="border-b border-parchment/50 text-charcoal font-[460]">
+                  <td className="py-1.5 pr-3">{new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                  <td className="py-1.5 pr-3">{d.sessions}</td>
+                  <td className="py-1.5 pr-3 font-[540]">{display}</td>
+                  <td className="py-1.5">{d.country}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
