@@ -283,17 +283,19 @@ export function ImeiLookup() {
       .catch((e: Error) => setOrdError(e.message))
       .finally(() => setOrdLoading(false));
 
-    // 5. CDR / recent sessions
+    // 5. Connection log (UCL activity stream — last 30 days)
     setCdrLoading(true);
     setCdrError(null);
     setCdrData([]);
-    fetchOS("/api/opensearch/cdr", { imei: trimmed, size: 20 })
+    fetch("/api/ucl/connection-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imei: trimmed }),
+    })
+      .then((r) => r.json())
       .then((d) => {
-        const hits =
-          (d.uclCdr?.hits as Record<string, unknown>[]) ||
-          (d.consumption?.hits as Record<string, unknown>[]) ||
-          [];
-        setCdrData(hits);
+        if (!d.ok) setCdrError(d.error || "Failed to fetch connection log");
+        else setCdrData(d.entries ?? []);
       })
       .catch((e: Error) => setCdrError(e.message))
       .finally(() => setCdrLoading(false));
@@ -558,59 +560,43 @@ export function ImeiLookup() {
             </div>
           </LookupCard>
 
-          {/* Recent Sessions (full width) */}
+          {/* Connection Log (full width) */}
           <LookupCard
-            title="Recent Sessions"
+            title="Connection Log"
             icon={<Activity className="h-3.5 w-3.5 text-amethyst" />}
             loading={cdrLoading}
             error={cdrError}
             empty={cdrData.length === 0 && !cdrLoading && !cdrError}
+            badge={cdrData.length > 0 ? { label: `${cdrData.length} entries`, className: "bg-lavender/20 text-amethyst" } : null}
             fullWidth
           >
             <div className="overflow-x-auto">
               <table className="w-full text-[12px]">
                 <thead>
                   <tr className="border-b border-parchment text-left text-muted-foreground font-[460]">
-                    <th className="pb-2 pr-4 font-[460]">Date</th>
-                    <th className="pb-2 pr-4 font-[460]">Upload</th>
-                    <th className="pb-2 pr-4 font-[460]">Download</th>
-                    <th className="pb-2 pr-4 font-[460]">Total</th>
-                    <th className="pb-2 font-[460]">Country</th>
+                    <th className="pb-2 pr-3 font-[460]">Time</th>
+                    <th className="pb-2 pr-3 font-[460]">Country</th>
+                    <th className="pb-2 pr-3 font-[460]">MCC</th>
+                    <th className="pb-2 pr-3 font-[460]">MNC</th>
+                    <th className="pb-2 pr-3 font-[460]">Network</th>
+                    <th className="pb-2 pr-3 font-[460]">RAT</th>
+                    <th className="pb-2 pr-3 font-[460]">Signal</th>
+                    <th className="pb-2 font-[460]">Battery</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {cdrData.slice(0, 20).map((row, i) => {
-                    const src = (
-                      row._source ? row._source : row
-                    ) as Record<string, unknown>;
-                    const date = String(
-                      src.date || src.Date || src.timestamp || ""
-                    );
-                    const up = Number(
-                      src.sysUpFlow || src.upload || src.UPLOAD_BYTES || 0
-                    );
-                    const down = Number(
-                      src.sysDownFlow || src.download || src.DOWNLOAD_BYTES || 0
-                    );
-                    const total = Number(
-                      src.totalFlow || src.total || up + down
-                    );
-                    const country = String(
-                      src.country || src.iso2 || src.mcc || ""
-                    );
-                    return (
-                      <tr
-                        key={i}
-                        className="border-b border-parchment/50 text-charcoal font-[460]"
-                      >
-                        <td className="py-1.5 pr-4">{date.slice(0, 16)}</td>
-                        <td className="py-1.5 pr-4">{formatBytes(up)}</td>
-                        <td className="py-1.5 pr-4">{formatBytes(down)}</td>
-                        <td className="py-1.5 pr-4">{formatBytes(total)}</td>
-                        <td className="py-1.5">{country}</td>
-                      </tr>
-                    );
-                  })}
+                  {cdrData.slice(0, 50).map((row: Record<string, unknown>, i: number) => (
+                    <tr key={i} className="border-b border-parchment/50 text-charcoal font-[460]">
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{row.time ? formatTimestamp(row.time as number) : ""}</td>
+                      <td className="py-1.5 pr-3">{row.country as string}</td>
+                      <td className="py-1.5 pr-3">{row.mcc as string}</td>
+                      <td className="py-1.5 pr-3">{row.mnc as string}</td>
+                      <td className="py-1.5 pr-3">{row.network as string}</td>
+                      <td className="py-1.5 pr-3">{row.rat as string}</td>
+                      <td className="py-1.5 pr-3">{row.signal != null ? `${row.signal} dBm` : ""}</td>
+                      <td className="py-1.5">{row.battery as string}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
