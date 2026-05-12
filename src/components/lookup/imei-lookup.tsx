@@ -293,7 +293,12 @@ export function ImeiLookup() {
     setUsageLoading(true);
     setUsageError(null);
     setUsageData([]);
-    fetchOS("/api/opensearch/cdr", { imei: trimmed, size: 50 })
+    fetchOS("/api/opensearch/cdr", {
+      imei: trimmed,
+      size: 500,
+      from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      to: new Date().toISOString(),
+    })
       .then((d) => {
         const records =
           d.cdr?.ucl?.records ||
