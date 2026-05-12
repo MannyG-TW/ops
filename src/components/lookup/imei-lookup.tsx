@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Search,
   Wifi,
@@ -583,60 +583,20 @@ export function ImeiLookup() {
             </div>
           </LookupCard>
 
-          {/* Data Usage (full width) */}
+          {/* Data Usage (full width) — chart + table */}
           <LookupCard
             title="Data Usage"
             icon={<BarChart3 className="h-3.5 w-3.5 text-amethyst" />}
             loading={usageLoading}
             error={usageError}
             empty={usageData.length === 0 && !usageLoading && !usageError}
-            badge={usageData.length > 0 ? { label: `${usageData.length} sessions`, className: "bg-lavender/20 text-amethyst" } : null}
+            badge={usageData.length > 0 ? {
+              label: `${formatBytes(usageData.reduce((sum, r) => sum + Number(r.flowsize || r.flow_size || r.TOTAL_QTY || 0), 0))} total`,
+              className: "bg-lavender/20 text-amethyst",
+            } : null}
             fullWidth
           >
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
-                <thead>
-                  <tr className="border-b border-parchment text-left text-muted-foreground font-[460]">
-                    <th className="pb-2 pr-3 font-[460]">Start</th>
-                    <th className="pb-2 pr-3 font-[460]">End</th>
-                    <th className="pb-2 pr-3 font-[460]">Duration</th>
-                    <th className="pb-2 pr-3 font-[460]">Data</th>
-                    <th className="pb-2 font-[460]">Country</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usageData.slice(0, 50).map((row, i) => {
-                    // Handle both ucl-sim-cdr format and enriched format
-                    const startRaw = row.start_time_iso || row["@timestamp"] || row.start_time;
-                    const endRaw = row.end_time_iso || row.end_time_date || row.end_time;
-                    const startStr = typeof startRaw === "string"
-                      ? startRaw.replace("T", " ").slice(0, 16)
-                      : startRaw ? formatTimestamp(Number(startRaw)) : "";
-                    const endStr = typeof endRaw === "string"
-                      ? endRaw.replace("T", " ").slice(0, 16)
-                      : endRaw ? formatTimestamp(Number(endRaw)) : "";
-                    const durSec = Number(row.duration_seconds || 0);
-                    const startMs = Number(row.start_time || 0);
-                    const endMs = row.end_time_date ? new Date(row.end_time_date as string).getTime() : 0;
-                    const calcDur = durSec > 0 ? durSec : (startMs && endMs ? Math.floor((endMs - startMs) / 1000) : 0);
-                    const durMin = calcDur > 0 ? `${Math.floor(calcDur / 60)}m ${calcDur % 60}s` : "";
-                    const bytes = Number(row.flowsize || row.flow_size || row.TOTAL_QTY || 0);
-                    const mb = Number(row.flow_size_mb || (bytes / (1024 * 1024)));
-                    const display = mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : mb > 0 ? `${mb.toFixed(1)} MB` : "0";
-                    const country = (row.visit_country || row.country || row.iso2 || "") as string;
-                    return (
-                      <tr key={i} className="border-b border-parchment/50 text-charcoal font-[460]">
-                        <td className="py-1.5 pr-3 whitespace-nowrap">{startStr}</td>
-                        <td className="py-1.5 pr-3 whitespace-nowrap">{endStr}</td>
-                        <td className="py-1.5 pr-3">{durMin}</td>
-                        <td className="py-1.5 pr-3 font-[540]">{display}</td>
-                        <td className="py-1.5">{country}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <UsageChart data={usageData} />
           </LookupCard>
 
           {/* Connection Log (full width) */}
@@ -682,6 +642,167 @@ export function ImeiLookup() {
           </LookupCard>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Daily usage chart + session table for IMEI data consumption */
+function UsageChart({ data }: { data: Record<string, unknown>[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  // Aggregate sessions by day
+  const dailyMap = new Map<string, { bytes: number; sessions: number; country: string }>();
+  for (const row of data) {
+    const rawDate = (row.start_time_iso || row["@timestamp"] || "") as string;
+    const day = typeof rawDate === "string" ? rawDate.slice(0, 10) : "";
+    if (!day) continue;
+    const bytes = Number(row.flowsize || row.flow_size || row.TOTAL_QTY || 0);
+    const country = (row.visit_country || row.country || "") as string;
+    const prev = dailyMap.get(day) || { bytes: 0, sessions: 0, country };
+    dailyMap.set(day, { bytes: prev.bytes + bytes, sessions: prev.sessions + 1, country: country || prev.country });
+  }
+  const daily = Array.from(dailyMap.entries())
+    .map(([date, v]) => ({ date, ...v }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (daily.length === 0) return <p className="text-[12px] font-[460] text-muted-foreground">No usage data</p>;
+
+  // Chart dimensions
+  const W = 600, H = 160, padT = 16, padB = 8, padX = 8;
+  const plotH = H - padT - padB, plotW = W - padX * 2;
+  const maxBytes = Math.max(...daily.map((d) => d.bytes), 1);
+  const chartMax = maxBytes * 1.15;
+  const labelInterval = daily.length > 14 ? Math.ceil(daily.length / 10) : 1;
+
+  const pts = daily.map((d, i) => {
+    const x = daily.length === 1 ? W / 2 : padX + (plotW * i) / (daily.length - 1);
+    const y = d.bytes > 0 ? padT + plotH * (1 - d.bytes / chartMax) : padT + plotH;
+    return { x, y, ...d };
+  });
+
+  // Catmull-Rom smooth curve
+  const smoothPath = (() => {
+    if (pts.length < 2) return "";
+    if (pts.length === 2) return `M${pts[0].x},${pts[0].y}L${pts[1].x},${pts[1].y}`;
+    const t = 0.3;
+    let d = `M${pts[0].x},${pts[0].y}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+      d += `C${p1.x + (p2.x - p0.x) * t},${p1.y + (p2.y - p0.y) * t} ${p2.x - (p3.x - p1.x) * t},${p2.y - (p3.y - p1.y) * t} ${p2.x},${p2.y}`;
+    }
+    return d;
+  })();
+  const areaPath = smoothPath ? `${smoothPath}L${pts[pts.length - 1].x},${padT + plotH}L${pts[0].x},${padT + plotH}Z` : "";
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect || daily.length < 2) return;
+    const mouseX = ((e.clientX - rect.left) / rect.width) * W;
+    let closest = 0, closestDist = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const dist = Math.abs(pts[i].x - mouseX);
+      if (dist < closestDist) { closestDist = dist; closest = i; }
+    }
+    setHoveredIdx(closest);
+  };
+
+  const gridYs = [0.25, 0.5, 0.75].map((pct) => padT + plotH * pct);
+
+  return (
+    <div>
+      {/* Chart */}
+      <div className="flex">
+        <div className="flex flex-col justify-between pr-2" style={{ height: H, width: 48 }}>
+          <span className="text-[10px] font-mono font-[500] text-muted-foreground text-right">{formatBytes(maxBytes)}</span>
+          <span className="text-[10px] font-mono font-[460] text-muted-foreground/40 text-right">{formatBytes(maxBytes / 2)}</span>
+          <span className="text-[10px] font-mono font-[460] text-muted-foreground/40 text-right">0</span>
+        </div>
+        <div ref={containerRef} className="flex-1 relative cursor-crosshair" style={{ height: H }} onMouseMove={handleMouseMove} onMouseLeave={() => setHoveredIdx(null)}>
+          <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full">
+            <defs>
+              <linearGradient id="lookupUsageGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--color-lavender)" stopOpacity="0.18" />
+                <stop offset="100%" stopColor="var(--color-lavender)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {gridYs.map((gy, i) => (
+              <line key={i} x1={padX} y1={gy} x2={W - padX} y2={gy} stroke="var(--color-parchment)" strokeWidth="1" strokeDasharray="4 4" strokeOpacity="0.6" />
+            ))}
+            <line x1={padX} y1={padT + plotH} x2={W - padX} y2={padT + plotH} stroke="var(--color-parchment)" strokeWidth="1" strokeOpacity="0.4" />
+            {areaPath && <path d={areaPath} fill="url(#lookupUsageGrad)" />}
+            {smoothPath && <path d={smoothPath} fill="none" stroke="var(--color-amethyst)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+            {hoveredIdx !== null && (
+              <line x1={pts[hoveredIdx].x} y1={padT} x2={pts[hoveredIdx].x} y2={padT + plotH} stroke="var(--color-amethyst)" strokeWidth="1" strokeOpacity="0.3" strokeDasharray="3 3" />
+            )}
+            {pts.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y}
+                r={hoveredIdx === i ? 5 : (daily.length <= 14 && p.bytes > 0) ? 2.5 : 0}
+                fill={hoveredIdx === i ? "var(--color-amethyst)" : "var(--color-lavender)"}
+                stroke={hoveredIdx === i ? "white" : "none"} strokeWidth={hoveredIdx === i ? 2 : 0}
+                className="transition-all duration-150"
+              />
+            ))}
+          </svg>
+          {hoveredIdx !== null && (
+            <div className="absolute z-10 pointer-events-none" style={{
+              left: `${(pts[hoveredIdx].x / W) * 100}%`,
+              top: `${(pts[hoveredIdx].y / H) * 100}%`,
+              transform: "translate(-50%, calc(-100% - 12px))",
+            }}>
+              <div className="rounded-[8px] bg-mysteria text-white px-3 py-2 text-[11px] font-[500] whitespace-nowrap shadow-lg">
+                <div className="font-[600] text-[12px]">{formatBytes(daily[hoveredIdx].bytes)}</div>
+                <div className="text-white/60 mt-0.5">
+                  {new Date(daily[hoveredIdx].date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                  {daily[hoveredIdx].country && ` · ${daily[hoveredIdx].country}`}
+                  {` · ${daily[hoveredIdx].sessions} session${daily[hoveredIdx].sessions !== 1 ? "s" : ""}`}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      {/* X-axis labels */}
+      <div className="flex mt-1" style={{ paddingLeft: 48 }}>
+        <div className="flex-1 flex" style={{ gap: 2 }}>
+          {daily.map((d, i) => (
+            <div key={i} className="flex-1 text-center">
+              {(i % labelInterval === 0 || i === daily.length - 1) && (
+                <span className={`text-[9px] font-[460] leading-tight block ${d.bytes > 0 ? "text-muted-foreground" : "text-muted-foreground/30"}`}>
+                  {new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Session table */}
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="border-b border-parchment text-left text-muted-foreground font-[460]">
+              <th className="pb-2 pr-3 font-[460]">Date</th>
+              <th className="pb-2 pr-3 font-[460]">Sessions</th>
+              <th className="pb-2 pr-3 font-[460]">Data</th>
+              <th className="pb-2 font-[460]">Country</th>
+            </tr>
+          </thead>
+          <tbody>
+            {daily.map((d, i) => {
+              const mb = d.bytes / (1024 * 1024);
+              const display = mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+              return (
+                <tr key={i} className="border-b border-parchment/50 text-charcoal font-[460]">
+                  <td className="py-1.5 pr-3">{new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                  <td className="py-1.5 pr-3">{d.sessions}</td>
+                  <td className="py-1.5 pr-3 font-[540]">{display}</td>
+                  <td className="py-1.5">{d.country}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
