@@ -169,33 +169,10 @@ export function ImeiLookup() {
       .catch((e: Error) => setTermError(e.message))
       .finally(() => setTermLoading(false));
 
-    // 2. Device info
+    // 2. Device info + offers (single call — device-info returns offers alongside binding)
     setDevLoading(true);
     setDevError(null);
     setDevBinding(null);
-    fetch("/api/ucl/device-info", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imei: trimmed }),
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!d.ok) setDevError(d.error || "Failed to fetch device info");
-        else setDevBinding(d.binding ?? null);
-      })
-      .catch((e: Error) => setDevError(e.message))
-      .finally(() => setDevLoading(false));
-
-    // 3. Orders (search by IMEI)
-    setOrdLoading(true);
-    setOrdError(null);
-    setOrdData([]);
-    fetchOS("/api/opensearch/search", { query: trimmed })
-      .then((d) => setOrdData(d.results ?? []))
-      .catch((e: Error) => setOrdError(e.message))
-      .finally(() => setOrdLoading(false));
-
-    // 4. User offers — chain from device-info for userCode
     setOffLoading(true);
     setOffError(null);
     setOffData([]);
@@ -205,29 +182,32 @@ export function ImeiLookup() {
       body: JSON.stringify({ imei: trimmed }),
     })
       .then((r) => r.json())
-      .then((devResult) => {
-        const userCode = devResult?.binding?.userCode || devResult?.binding?.customerName;
-        if (!userCode) {
-          setOffError("No user bound to this device");
-          setOffLoading(false);
-          return Promise.resolve();
+      .then((d) => {
+        if (!d.ok) {
+          setDevError(d.error || "Failed to fetch device info");
+          setOffError(d.error || "Failed to fetch offers");
+        } else {
+          setDevBinding(d.binding ?? null);
+          setOffData(d.offers ?? []);
         }
-        return fetch("/api/ucl/user-offers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userCode }),
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            if (!d.ok) setOffError(d.error || "Failed to fetch user offers");
-            else setOffData(d.offers ?? []);
-          })
-          .finally(() => setOffLoading(false));
       })
       .catch((e: Error) => {
+        setDevError(e.message);
         setOffError(e.message);
+      })
+      .finally(() => {
+        setDevLoading(false);
         setOffLoading(false);
       });
+
+    // 3. Orders (search by IMEI)
+    setOrdLoading(true);
+    setOrdError(null);
+    setOrdData([]);
+    fetchOS("/api/opensearch/search", { query: trimmed })
+      .then((d) => setOrdData(d.results ?? []))
+      .catch((e: Error) => setOrdError(e.message))
+      .finally(() => setOrdLoading(false));
 
     // 5. CDR / recent sessions
     setCdrLoading(true);
