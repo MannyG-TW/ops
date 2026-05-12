@@ -201,6 +201,8 @@ export function ImeiLookup() {
 
   // CDR / sessions
   const [cdrLoading, setCdrLoading] = useState(false);
+  const [cdrPage, setCdrPage] = useState(0);
+  const CDR_PAGE_SIZE = 10;
   const [cdrError, setCdrError] = useState<string | null>(null);
   const [cdrData, setCdrData] = useState<Record<string, unknown>[]>([]);
 
@@ -452,9 +454,6 @@ export function ImeiLookup() {
               <KVRow label="Seed ICCID" value={detData?.seedIccid || ""} />
               <KVRow label="Seed IMSI" value={detData?.seedImsi || ""} />
               <KVRow label="Balance" value={detData?.amount != null ? `${detData.amount.toFixed(2)} ${detData.currencyType || ""}` : ""} />
-              <KVRow label="Import Date" value={detData?.createTime ? formatDate(detData.createTime) : ""} />
-              <KVRow label="Created By" value={detData?.operatorName || ""} />
-              <KVRow label="Source" value={detData?.regsiterSource || ""} />
             </div>
           </LookupCard>
 
@@ -542,6 +541,16 @@ export function ImeiLookup() {
                 .slice(0, 10)
                 .map((offer, i) => {
                 const isValid = offer.status === "VALID";
+                // Calculate data consumed during this plan's validity window from CDR
+                const planStart = offer.effectiveTime || 0;
+                const planEnd = offer.expiryTime || Infinity;
+                const consumed = usageData.reduce((sum, row) => {
+                  const sessionStart = Number(row.start_time || 0);
+                  if (sessionStart >= planStart && sessionStart <= planEnd) {
+                    return sum + Number(row.flowsize || row.flow_size || row.TOTAL_QTY || 0);
+                  }
+                  return sum;
+                }, 0);
                 return (
                   <div
                     key={i}
@@ -572,9 +581,17 @@ export function ImeiLookup() {
                         </p>
                       )}
                     </div>
-                    {offer.flowByte != null && offer.surplusFlowbyte != null && (
+                    {offer.flowByte != null && offer.surplusFlowbyte != null ? (
                       <p className="mt-0.5 text-[11px] font-[460] text-muted-foreground">
                         Data: {formatBytes(Number(offer.surplusFlowbyte))} / {formatBytes(Number(offer.flowByte))} remaining
+                      </p>
+                    ) : consumed > 0 ? (
+                      <p className="mt-0.5 text-[11px] font-[540] text-amethyst">
+                        Consumed: {formatBytes(consumed)}
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 text-[11px] font-[460] text-muted-foreground">
+                        No usage recorded
                       </p>
                     )}
                     {offer.mccList && offer.mccList.length > 0 && (
@@ -629,7 +646,7 @@ export function ImeiLookup() {
                   </tr>
                 </thead>
                 <tbody>
-                  {cdrData.slice(0, 50).map((row: Record<string, unknown>, i: number) => (
+                  {cdrData.slice(cdrPage * CDR_PAGE_SIZE, (cdrPage + 1) * CDR_PAGE_SIZE).map((row: Record<string, unknown>, i: number) => (
                     <tr key={i} className="border-b border-parchment/50 text-charcoal font-[460]">
                       <td className="py-1.5 pr-3 whitespace-nowrap">{row.time ? formatTimestamp(row.time as number) : ""}</td>
                       <td className="py-1.5 pr-3">{row.country as string}</td>
@@ -644,6 +661,30 @@ export function ImeiLookup() {
                 </tbody>
               </table>
             </div>
+            {/* Pagination */}
+            {cdrData.length > CDR_PAGE_SIZE && (
+              <div className="mt-3 flex items-center justify-between">
+                <span className="text-[11px] font-[460] text-muted-foreground">
+                  {cdrPage * CDR_PAGE_SIZE + 1}–{Math.min((cdrPage + 1) * CDR_PAGE_SIZE, cdrData.length)} of {cdrData.length}
+                </span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setCdrPage((p) => Math.max(0, p - 1))}
+                    disabled={cdrPage === 0}
+                    className="rounded-[8px] px-3 py-1 text-[11px] font-[540] text-charcoal bg-parchment/40 hover:bg-parchment/70 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    onClick={() => setCdrPage((p) => Math.min(Math.ceil(cdrData.length / CDR_PAGE_SIZE) - 1, p + 1))}
+                    disabled={(cdrPage + 1) * CDR_PAGE_SIZE >= cdrData.length}
+                    className="rounded-[8px] px-3 py-1 text-[11px] font-[540] text-charcoal bg-parchment/40 hover:bg-parchment/70 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </LookupCard>
         </div>
       )}
