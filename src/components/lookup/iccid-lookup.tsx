@@ -172,14 +172,9 @@ export function IccidLookup() {
   // Location: { location: { last_operator: { country, operator, event_time, rat, imei } } }
   const lastOp = (locData as AnyRecord)?.location?.last_operator as AnyRecord | undefined;
 
-  // Coverage: response varies — extract what we can
-  const covRaw = covData as AnyRecord | null;
-  const covCountries = Array.isArray(covRaw?.countries)
-    ? (covRaw.countries as string[])
-    : [];
-  const covNetworks = Array.isArray(covRaw?.networks)
-    ? (covRaw.networks as string[])
-    : [];
+  // Coverage: { coverageProfiles: [{ countries: [{ name, iso2, operators: [{ name, supported_rats }] }] }] }
+  const covProfiles = (covData as AnyRecord)?.coverageProfiles as AnyRecord[] | undefined;
+  const covCountries = (covProfiles?.[0]?.countries as AnyRecord[]) || [];
 
   return (
     <div className="space-y-4">
@@ -243,7 +238,9 @@ export function IccidLookup() {
           >
             <div>
               {planName && <KVRow label="Plan" value={planName} />}
-              {planCountry && <KVRow label="Country" value={planCountry} />}
+              {planCountry && <KVRow label="Country" value={
+                covCountries.find((c) => String(c.iso2).toUpperCase() === planCountry.toUpperCase())?.name as string || planCountry
+              } />}
               {!isNaN(usedBytes) && !isNaN(totalBytes) && (
                 <>
                   <KVRow
@@ -380,39 +377,26 @@ export function IccidLookup() {
             icon={<Globe className="h-3.5 w-3.5 text-amethyst" />}
             loading={covLoading}
             error={covError}
-            empty={!covData && !covLoading && !covError}
+            empty={covCountries.length === 0 && !covLoading && !covError}
+            badge={covCountries.length > 0 ? { label: `${covCountries.length} countries`, className: "bg-lavender/20 text-amethyst" } : null}
           >
-            <div>
-              {covCountries.length > 0 && (
-                <div className="mb-2">
-                  <p className="text-[11px] font-[460] text-muted-foreground mb-1">
-                    Countries ({covCountries.length})
-                  </p>
-                  <p className="text-[12px] font-[540] text-charcoal leading-relaxed">
-                    {covCountries.slice(0, 20).join(", ")}
-                    {covCountries.length > 20 &&
-                      ` +${covCountries.length - 20} more`}
-                  </p>
-                </div>
+            <div className="space-y-1 max-h-[300px] overflow-y-auto">
+              {covCountries.slice(0, 50).map((c, i) => {
+                const operators = (c.operators as AnyRecord[]) || [];
+                return (
+                  <div key={i} className="flex items-baseline justify-between gap-2 py-0.5">
+                    <span className="text-[12px] font-[540] text-charcoal">{String(c.name)}</span>
+                    <span className="text-[10px] font-[460] text-muted-foreground text-right truncate max-w-[60%]">
+                      {operators.map((op) => String(op.name)).join(", ")}
+                    </span>
+                  </div>
+                );
+              })}
+              {covCountries.length > 50 && (
+                <p className="text-[11px] font-[460] text-muted-foreground pt-1">
+                  +{covCountries.length - 50} more countries
+                </p>
               )}
-              {covNetworks.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-[460] text-muted-foreground mb-1">
-                    Networks ({covNetworks.length})
-                  </p>
-                  <p className="text-[12px] font-[540] text-charcoal leading-relaxed">
-                    {covNetworks.slice(0, 10).join(", ")}
-                    {covNetworks.length > 10 &&
-                      ` +${covNetworks.length - 10} more`}
-                  </p>
-                </div>
-              )}
-              {/* Fallback: render top-level scalar fields if no structured lists */}
-              {covData && covCountries.length === 0 && covNetworks.length === 0 &&
-                Object.entries(covData)
-                  .filter(([, v]) => typeof v === "string" || typeof v === "number")
-                  .slice(0, 6)
-                  .map(([k, v]) => <KVRow key={k} label={k} value={String(v)} />)}
             </div>
           </LookupCard>
 
