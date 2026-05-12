@@ -105,6 +105,7 @@ interface OrderResult {
 }
 
 interface OfferItem {
+  goodsId?: string;
   goodsName?: string;
   goodsCode?: string;
   goodsTypeName?: string;
@@ -541,12 +542,9 @@ export function ImeiLookup() {
                 .slice(0, 10)
                 .map((offer, i) => {
                 const isValid = offer.status === "VALID";
-                // Calculate data consumed during this plan's validity window from CDR
-                const planStart = offer.effectiveTime || 0;
-                const planEnd = offer.expiryTime || Infinity;
+                // Calculate data consumed for this plan by matching CDR package to offer goodsId
                 const consumed = usageData.reduce((sum, row) => {
-                  const sessionStart = Number(row.start_time || 0);
-                  if (sessionStart >= planStart && sessionStart <= planEnd) {
+                  if (offer.goodsId && String(row.package) === offer.goodsId) {
                     return sum + Number(row.flowsize || row.flow_size || row.TOTAL_QTY || 0);
                   }
                   return sum;
