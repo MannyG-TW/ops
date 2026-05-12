@@ -296,6 +296,8 @@ export function ImeiLookup() {
     fetchOS("/api/opensearch/cdr", { imei: trimmed, size: 50 })
       .then((d) => {
         const records =
+          d.cdr?.ucl?.records ||
+          d.cdr?.dailyConsumption?.records ||
           d.ucl?.records ||
           d.dailyConsumption?.records ||
           [];
@@ -604,17 +606,28 @@ export function ImeiLookup() {
                 </thead>
                 <tbody>
                   {usageData.slice(0, 50).map((row, i) => {
-                    const startIso = (row.start_time_iso || "") as string;
-                    const endIso = (row.end_time_iso || "") as string;
+                    // Handle both ucl-sim-cdr format and enriched format
+                    const startRaw = row.start_time_iso || row["@timestamp"] || row.start_time;
+                    const endRaw = row.end_time_iso || row.end_time_date || row.end_time;
+                    const startStr = typeof startRaw === "string"
+                      ? startRaw.replace("T", " ").slice(0, 16)
+                      : startRaw ? formatTimestamp(Number(startRaw)) : "";
+                    const endStr = typeof endRaw === "string"
+                      ? endRaw.replace("T", " ").slice(0, 16)
+                      : endRaw ? formatTimestamp(Number(endRaw)) : "";
                     const durSec = Number(row.duration_seconds || 0);
-                    const durMin = durSec > 0 ? `${Math.floor(durSec / 60)}m ${durSec % 60}s` : "";
-                    const mb = Number(row.flow_size_mb || 0);
+                    const startMs = Number(row.start_time || 0);
+                    const endMs = row.end_time_date ? new Date(row.end_time_date as string).getTime() : 0;
+                    const calcDur = durSec > 0 ? durSec : (startMs && endMs ? Math.floor((endMs - startMs) / 1000) : 0);
+                    const durMin = calcDur > 0 ? `${Math.floor(calcDur / 60)}m ${calcDur % 60}s` : "";
+                    const bytes = Number(row.flowsize || row.flow_size || row.TOTAL_QTY || 0);
+                    const mb = Number(row.flow_size_mb || (bytes / (1024 * 1024)));
                     const display = mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : mb > 0 ? `${mb.toFixed(1)} MB` : "0";
-                    const country = (row.visit_country || "") as string;
+                    const country = (row.visit_country || row.country || row.iso2 || "") as string;
                     return (
                       <tr key={i} className="border-b border-parchment/50 text-charcoal font-[460]">
-                        <td className="py-1.5 pr-3 whitespace-nowrap">{startIso.replace("T", " ").slice(0, 16)}</td>
-                        <td className="py-1.5 pr-3 whitespace-nowrap">{endIso.replace("T", " ").slice(0, 16)}</td>
+                        <td className="py-1.5 pr-3 whitespace-nowrap">{startStr}</td>
+                        <td className="py-1.5 pr-3 whitespace-nowrap">{endStr}</td>
                         <td className="py-1.5 pr-3">{durMin}</td>
                         <td className="py-1.5 pr-3 font-[540]">{display}</td>
                         <td className="py-1.5">{country}</td>
