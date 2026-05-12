@@ -8,6 +8,7 @@ import {
   Package,
   ShoppingBag,
   Activity,
+  BarChart3,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -193,6 +194,11 @@ export function ImeiLookup() {
   const [offError, setOffError] = useState<string | null>(null);
   const [offData, setOffData] = useState<OfferItem[]>([]);
 
+  // Data usage (UCL CDR from OpenSearch)
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
+  const [usageData, setUsageData] = useState<Record<string, unknown>[]>([]);
+
   // CDR / sessions
   const [cdrLoading, setCdrLoading] = useState(false);
   const [cdrError, setCdrError] = useState<string | null>(null);
@@ -283,7 +289,22 @@ export function ImeiLookup() {
       .catch((e: Error) => setOrdError(e.message))
       .finally(() => setOrdLoading(false));
 
-    // 5. Connection log (UCL activity stream — last 30 days)
+    // 5. Data usage (UCL CDR from OpenSearch)
+    setUsageLoading(true);
+    setUsageError(null);
+    setUsageData([]);
+    fetchOS("/api/opensearch/cdr", { imei: trimmed, size: 50 })
+      .then((d) => {
+        const records =
+          d.ucl?.records ||
+          d.dailyConsumption?.records ||
+          [];
+        setUsageData(records);
+      })
+      .catch((e: Error) => setUsageError(e.message))
+      .finally(() => setUsageLoading(false));
+
+    // 6. Connection log (UCL activity stream — last 30 days)
     setCdrLoading(true);
     setCdrError(null);
     setCdrData([]);
@@ -557,6 +578,51 @@ export function ImeiLookup() {
                   </div>
                 );
               })}
+            </div>
+          </LookupCard>
+
+          {/* Data Usage (full width) */}
+          <LookupCard
+            title="Data Usage"
+            icon={<BarChart3 className="h-3.5 w-3.5 text-amethyst" />}
+            loading={usageLoading}
+            error={usageError}
+            empty={usageData.length === 0 && !usageLoading && !usageError}
+            badge={usageData.length > 0 ? { label: `${usageData.length} sessions`, className: "bg-lavender/20 text-amethyst" } : null}
+            fullWidth
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-parchment text-left text-muted-foreground font-[460]">
+                    <th className="pb-2 pr-3 font-[460]">Start</th>
+                    <th className="pb-2 pr-3 font-[460]">End</th>
+                    <th className="pb-2 pr-3 font-[460]">Duration</th>
+                    <th className="pb-2 pr-3 font-[460]">Data</th>
+                    <th className="pb-2 font-[460]">Country</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usageData.slice(0, 50).map((row, i) => {
+                    const startIso = (row.start_time_iso || "") as string;
+                    const endIso = (row.end_time_iso || "") as string;
+                    const durSec = Number(row.duration_seconds || 0);
+                    const durMin = durSec > 0 ? `${Math.floor(durSec / 60)}m ${durSec % 60}s` : "";
+                    const mb = Number(row.flow_size_mb || 0);
+                    const display = mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : mb > 0 ? `${mb.toFixed(1)} MB` : "0";
+                    const country = (row.visit_country || "") as string;
+                    return (
+                      <tr key={i} className="border-b border-parchment/50 text-charcoal font-[460]">
+                        <td className="py-1.5 pr-3 whitespace-nowrap">{startIso.replace("T", " ").slice(0, 16)}</td>
+                        <td className="py-1.5 pr-3 whitespace-nowrap">{endIso.replace("T", " ").slice(0, 16)}</td>
+                        <td className="py-1.5 pr-3">{durMin}</td>
+                        <td className="py-1.5 pr-3 font-[540]">{display}</td>
+                        <td className="py-1.5">{country}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </LookupCard>
 
