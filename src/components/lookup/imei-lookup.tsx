@@ -30,9 +30,21 @@ interface TerminalData {
 }
 
 interface AllTerminalData {
+  // queryUserInfo fields
+  belongCountry?: string;
+  mcc?: string;
+  rat?: string;
+  sigStrength?: string;
+  qualityVal?: string;
+  powerLeft?: string;
+  ctUsableClipSum?: number;
+  wifyConnectMax?: string;
+  loginDateTime?: number;
+  isOnline?: number | boolean;
+  plmn?: string;
+  // legacy queryOnlineTerminal fields (kept for backward compat)
   country?: string;
   iso2?: string;
-  powerLeft?: string;
   devicetype?: string;
   softversion?: string;
   totalFlow?: number;
@@ -307,28 +319,29 @@ export function ImeiLookup() {
             <div>
               <KVRow
                 label="Country"
-                value={termAllData?.iso2 || termAllData?.country || ""}
+                value={termAllData?.belongCountry || termAllData?.iso2 || termAllData?.country || ""}
               />
               <KVRow
-                label="MCC / MNC"
+                label="MCC"
+                value={termData?.mcc || ""}
+              />
+              <KVRow label="RAT" value={String(termAllData?.rat || "")} />
+              <KVRow label="Signal" value={termAllData?.sigStrength ? `${termAllData.sigStrength}` : signal} />
+              <KVRow label="Battery" value={termAllData?.powerLeft ? String(termAllData.powerLeft) : ""} />
+              <KVRow label="Quality" value={termAllData?.qualityVal ? String(termAllData.qualityVal) : ""} />
+              <KVRow
+                label="Data Clips"
+                value={termAllData?.ctUsableClipSum != null ? String(termAllData.ctUsableClipSum) : ""}
+              />
+              <KVRow
+                label="WiFi Max Users"
+                value={termAllData?.wifyConnectMax ? String(termAllData.wifyConnectMax) : ""}
+              />
+              <KVRow
+                label="Last Login"
                 value={
-                  termData?.mcc && termData?.mnc
-                    ? `${termData.mcc} / ${termData.mnc}`
-                    : ""
-                }
-              />
-              <KVRow label="Signal" value={signal} />
-              <KVRow label="Battery" value={termAllData?.powerLeft || ""} />
-              <KVRow label="IMSI" value={termData?.imsi || ""} />
-              <KVRow
-                label="Connected Users"
-                value={termAllData?.connectUserMax || ""}
-              />
-              <KVRow
-                label="Last Seen"
-                value={
-                  termAllData?.lastSeen
-                    ? formatTimestamp(termAllData.lastSeen)
+                  termAllData?.loginDateTime
+                    ? formatTimestamp(Number(termAllData.loginDateTime))
                     : ""
                 }
               />
