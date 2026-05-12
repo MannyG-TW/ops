@@ -431,9 +431,17 @@ export function ImeiLookup() {
             loading={offLoading}
             error={offError}
             empty={offData.length === 0 && !offLoading && !offError}
+            badge={offData.length > 0 ? {
+              label: `${offData.filter((o) => o.status === "VALID").length} active / ${offData.filter((o) => o.status !== "VALID").length} expired`,
+              className: "bg-lavender/20 text-amethyst",
+            } : null}
           >
             <div className="space-y-2">
-              {offData.slice(0, 10).map((offer, i) => {
+              {/* Deduplicate by goodsCode+effectiveTime+status, show VALID first */}
+              {Array.from(new Map(offData.map((o) => [`${o.goodsCode}-${o.effectiveTime}-${o.status}`, o])).values())
+                .sort((a, b) => (a.status === "VALID" ? 0 : 1) - (b.status === "VALID" ? 0 : 1))
+                .slice(0, 10)
+                .map((offer, i) => {
                 const isValid = offer.status === "VALID";
                 return (
                   <div
