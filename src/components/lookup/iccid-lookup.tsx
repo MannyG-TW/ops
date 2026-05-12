@@ -95,14 +95,35 @@ export function IccidLookup() {
     if (!isValid) return;
     setSearched(true);
 
-    // 1. Subscription
+    // 1. Subscription → then chain Coverage using plan's coverage_id
     setSubLoading(true);
     setSubError(null);
     setSubData(null);
+    setCovLoading(true);
+    setCovError(null);
+    setCovData(null);
     fetchTelliSIM(`/api/tellisim/subscription/${trimmed}`)
-      .then((d: AnyRecord) => setSubData(d))
-      .catch((e: Error) => setSubError(e.message))
-      .finally(() => setSubLoading(false));
+      .then((d: AnyRecord) => {
+        setSubData(d);
+        setSubLoading(false);
+        // Extract coverage_id from the plan and fetch specific coverage
+        const coverageId = d?.planAttachments?.data?.[0]?.plan?.coverage_id;
+        if (coverageId) {
+          fetchTelliSIM(`/api/tellisim/coverage/${coverageId}`, {})
+            .then((cov: AnyRecord) => setCovData(cov))
+            .catch((e: Error) => setCovError(e.message))
+            .finally(() => setCovLoading(false));
+        } else {
+          setCovError("No coverage ID in plan");
+          setCovLoading(false);
+        }
+      })
+      .catch((e: Error) => {
+        setSubError(e.message);
+        setSubLoading(false);
+        setCovError("Subscription failed — cannot load coverage");
+        setCovLoading(false);
+      });
 
     // 2. Location
     setLocLoading(true);
@@ -121,15 +142,6 @@ export function IccidLookup() {
       .then((d: { results?: OrderResult[] }) => setOrdData(d.results ?? []))
       .catch((e: Error) => setOrdError(e.message))
       .finally(() => setOrdLoading(false));
-
-    // 4. Coverage
-    setCovLoading(true);
-    setCovError(null);
-    setCovData(null);
-    fetchTelliSIM("/api/tellisim/coverage", { iccid: trimmed })
-      .then((d: AnyRecord) => setCovData(d))
-      .catch((e: Error) => setCovError(e.message))
-      .finally(() => setCovLoading(false));
 
     // 5. CDR
     setCdrLoading(true);
@@ -172,9 +184,11 @@ export function IccidLookup() {
   // Location: { location: { last_operator: { country, operator, event_time, rat, imei } } }
   const lastOp = (locData as AnyRecord)?.location?.last_operator as AnyRecord | undefined;
 
-  // Coverage: { coverageProfiles: [{ countries: [{ name, iso2, operators: [{ name, supported_rats }] }] }] }
-  const covProfiles = (covData as AnyRecord)?.coverageProfiles as AnyRecord[] | undefined;
-  const covCountries = (covProfiles?.[0]?.countries as AnyRecord[]) || [];
+  // Coverage: { coverageProfile: { countries: [{ name, iso2, operators: [{ name, supported_rats }] }] } }
+  // or from all profiles: { coverageProfiles: [{ countries: [...] }] }
+  const covProfile = (covData as AnyRecord)?.coverageProfile as AnyRecord | undefined;
+  const covCountries = (covProfile?.countries as AnyRecord[]) ||
+    ((covData as AnyRecord)?.coverageProfiles as AnyRecord[])?.[0]?.countries as AnyRecord[] || [];
 
   return (
     <div className="space-y-4">
