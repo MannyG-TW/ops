@@ -206,7 +206,7 @@ export function ImeiLookup() {
     })
       .then((r) => r.json())
       .then((devResult) => {
-        const userCode = devResult?.binding?.userCode;
+        const userCode = devResult?.binding?.userCode || devResult?.binding?.customerName;
         if (!userCode) {
           setOffError("No user bound to this device");
           setOffLoading(false);
