@@ -41,6 +41,12 @@ export function LookupCard({
 
         {loading && (
           <div className="space-y-2">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="h-3 w-3 rounded-full bg-amethyst/40 animate-pulse" />
+              <span className="text-[11px] font-[460] text-muted-foreground animate-pulse">
+                Fetching data...
+              </span>
+            </div>
             <Skeleton className="h-4 w-3/4" />
             <Skeleton className="h-4 w-1/2" />
             <Skeleton className="h-4 w-2/3" />

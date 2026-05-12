@@ -66,12 +66,16 @@ interface OrderResult {
 
 interface OfferItem {
   goodsName?: string;
+  goodsCode?: string;
   goodsTypeName?: string;
-  effectiveTime?: string;
-  expirationTime?: string;
-  flowBalance?: number;
-  flow?: number;
-  [key: string]: unknown;
+  goodsType?: string;
+  status?: string;
+  effectiveTime?: number;
+  expiryTime?: number;
+  flowByte?: number | null;
+  surplusFlowbyte?: number | null;
+  mccList?: string[];
+  periodUnit?: string;
 }
 
 // Parse signal from network field format: mcc|mnc|rat|rssi
@@ -99,6 +103,15 @@ function formatTimestamp(ts: number): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+  });
+}
+
+function formatDate(ts: number | undefined | null): string {
+  if (!ts) return "";
+  return new Date(ts).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 }
 
@@ -420,29 +433,51 @@ export function ImeiLookup() {
             empty={offData.length === 0 && !offLoading && !offError}
           >
             <div className="space-y-2">
-              {offData.slice(0, 10).map((offer, i) => (
-                <div
-                  key={i}
-                  className="rounded-[8px] bg-parchment/30 px-2 py-1.5"
-                >
-                  <p className="text-[12px] font-[600] text-charcoal">
-                    {offer.goodsName || offer.goodsTypeName || "Plan"}
-                  </p>
-                  {(offer.effectiveTime || offer.expirationTime) && (
-                    <p className="text-[11px] font-[460] text-muted-foreground">
-                      {offer.effectiveTime && `From: ${offer.effectiveTime}`}
-                      {offer.expirationTime &&
-                        ` · To: ${offer.expirationTime}`}
-                    </p>
-                  )}
-                  {offer.flow != null && offer.flowBalance != null && (
-                    <p className="text-[11px] font-[460] text-muted-foreground">
-                      {formatBytes(offer.flowBalance)} /{" "}
-                      {formatBytes(offer.flow)} remaining
-                    </p>
-                  )}
-                </div>
-              ))}
+              {offData.slice(0, 10).map((offer, i) => {
+                const isValid = offer.status === "VALID";
+                return (
+                  <div
+                    key={i}
+                    className="rounded-[8px] bg-parchment/30 px-2.5 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <p className="text-[12px] font-[600] text-charcoal">
+                        {offer.goodsName || offer.goodsTypeName || "Plan"}
+                      </p>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-[540] ${isValid ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
+                        {offer.status || "Unknown"}
+                      </span>
+                    </div>
+                    {offer.goodsCode && (
+                      <p className="mt-0.5 text-[11px] font-[460] text-muted-foreground">
+                        SKU: {offer.goodsCode}
+                      </p>
+                    )}
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
+                      {offer.effectiveTime && (
+                        <p className="text-[11px] font-[460] text-muted-foreground">
+                          From: {formatDate(offer.effectiveTime)}
+                        </p>
+                      )}
+                      {offer.expiryTime && (
+                        <p className="text-[11px] font-[460] text-muted-foreground">
+                          To: {formatDate(offer.expiryTime)}
+                        </p>
+                      )}
+                    </div>
+                    {offer.flowByte != null && offer.surplusFlowbyte != null && (
+                      <p className="mt-0.5 text-[11px] font-[460] text-muted-foreground">
+                        Data: {formatBytes(Number(offer.surplusFlowbyte))} / {formatBytes(Number(offer.flowByte))} remaining
+                      </p>
+                    )}
+                    {offer.mccList && offer.mccList.length > 0 && (
+                      <p className="mt-0.5 text-[11px] font-[460] text-muted-foreground">
+                        Countries: {offer.mccList.join(", ")}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </LookupCard>
 
