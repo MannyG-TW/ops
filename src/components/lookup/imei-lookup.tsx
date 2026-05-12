@@ -110,6 +110,7 @@ interface OfferItem {
   goodsCode?: string;
   goodsTypeName?: string;
   goodsType?: string;
+  categoryCode?: string;
   status?: string;
   effectiveTime?: number;
   expiryTime?: number;
@@ -117,6 +118,44 @@ interface OfferItem {
   surplusFlowbyte?: number | null;
   mccList?: string[];
   periodUnit?: string;
+  attrMap?: Record<string, string>;
+}
+
+/** Translate UCL attrMap into human-readable plan details */
+function describePlanAttrs(offer: OfferItem): string[] {
+  const details: string[] = [];
+  const attr = offer.attrMap || {};
+  const type = offer.goodsType;
+
+  // Plan type
+  if (type === "DISC") details.push("Day Pass");
+  else if (type === "PKAG") details.push("Data Package");
+
+  // Data allowance
+  if (attr.flowSize) {
+    const bytes = Number(attr.flowSize);
+    if (bytes >= 1073741824) details.push(`${(bytes / 1073741824).toFixed(0)} GB allowance`);
+    else if (bytes >= 1048576) details.push(`${(bytes / 1048576).toFixed(0)} MB allowance`);
+  } else if (attr.infiniFlag === "true") {
+    details.push("Unlimited data");
+  }
+
+  // Validity period
+  if (attr.period) {
+    const unit = (attr.periodUnit || offer.periodUnit || "DAY").toUpperCase();
+    const label = unit === "DAY" ? "day" : unit === "MONTH" ? "month" : unit.toLowerCase();
+    details.push(`${attr.period} ${label}${Number(attr.period) > 1 ? "s" : ""}`);
+  }
+
+  // Coverage type
+  if (attr.areaFlag === "LOCAL") details.push("Local coverage");
+  else if (attr.areaFlag === "ROAMING") details.push("Roaming coverage");
+
+  // Auto-renewal
+  if (attr.consecutive === "ON") details.push("Auto-renewing");
+  else if (attr.activeType === "AUTO") details.push("Auto-activate");
+
+  return details;
 }
 
 // Parse signal from network field format: mcc|mnc|rat|rssi
@@ -597,6 +636,15 @@ export function ImeiLookup() {
                         Countries: {offer.mccList.join(", ")}
                       </p>
                     )}
+                    {/* Plan details from attrMap */}
+                    {(() => {
+                      const attrs = describePlanAttrs(offer);
+                      return attrs.length > 0 ? (
+                        <p className="mt-1 text-[11px] font-[460] text-charcoal/60">
+                          {attrs.join(" · ")}
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                 );
               })}
