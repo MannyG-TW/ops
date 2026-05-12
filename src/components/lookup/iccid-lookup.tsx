@@ -15,7 +15,8 @@ import { LookupCard, KVRow } from "./lookup-card";
 import { fetchOS, fetchTelliSIM } from "@/lib/settings-client";
 
 // Loose types — TelliSIM API shapes vary
-type AnyRecord = Record<string, unknown>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<string, any>;
 
 interface OrderResult {
   id: string;
@@ -136,63 +137,48 @@ export function IccidLookup() {
     setCdrRows([]);
     fetchOS("/api/opensearch/cdr", { iccid: trimmed, size: 20 })
       .then(
-        (d: {
-          tellisimCdr?: { hits: AnyRecord[] };
-          archiveCdr?: { hits: AnyRecord[] };
-        }) => {
-          const hits =
-            d.tellisimCdr?.hits ?? d.archiveCdr?.hits ?? [];
-          setCdrRows(hits as AnyRecord[]);
+        (d: AnyRecord) => {
+          const records =
+            d.cdr?.tellisim?.records ??
+            d.cdr?.archive?.records ??
+            d.tellisimCdr?.hits ??
+            d.archiveCdr?.hits ??
+            [];
+          setCdrRows(records as AnyRecord[]);
         }
       )
       .catch((e: Error) => setCdrError(e.message))
       .finally(() => setCdrLoading(false));
   };
 
-  // Extract subscription fields loosely
-  const subStatus = String(
-    (subData as AnyRecord)?.status ||
-      (subData as AnyRecord)?.state ||
-      (subData as AnyRecord)?.subscription_status ||
-      ""
-  );
-  const planName = String(
-    (subData as AnyRecord)?.plan_name ||
-      (subData as AnyRecord)?.planName ||
-      (subData as AnyRecord)?.product ||
-      ""
-  );
-  const dataRemaining = Number(
-    (subData as AnyRecord)?.data_remaining ??
-      (subData as AnyRecord)?.dataRemaining ??
-      NaN
-  );
-  const dataTotal = Number(
-    (subData as AnyRecord)?.data_total ??
-      (subData as AnyRecord)?.dataTotal ??
-      (subData as AnyRecord)?.quota ??
-      NaN
-  );
-  const activationDate = String(
-    (subData as AnyRecord)?.activation_date ||
-      (subData as AnyRecord)?.activationDate ||
-      (subData as AnyRecord)?.activated_at ||
-      ""
-  );
-  const expiryDate = String(
-    (subData as AnyRecord)?.expiry_date ||
-      (subData as AnyRecord)?.expiryDate ||
-      (subData as AnyRecord)?.expires_at ||
-      (subData as AnyRecord)?.expiration ||
-      ""
-  );
+  // Extract subscription fields from actual TelliSIM API response
+  // Response: { subscription: { esim: {...} }, planAttachments: { data: [{ state, plan: { name }, used_allowance: { dataBytes }, activation_at, expiration_at }] } }
+  const planAttachment = (subData as AnyRecord)?.planAttachments?.data?.[0] as AnyRecord | undefined;
+  const plan = planAttachment?.plan as AnyRecord | undefined;
+  const subStatus = String(planAttachment?.state || "");
+  const planName = String(plan?.name || plan?.label || "");
+  const usedBytes = Number((planAttachment?.used_allowance as AnyRecord)?.dataBytes ?? NaN);
+  const totalMb = Number(plan?.data_mega_bytes ?? NaN);
+  const totalBytes = !isNaN(totalMb) ? totalMb * 1024 * 1024 : NaN;
+  const remainingBytes = !isNaN(usedBytes) && !isNaN(totalBytes) ? totalBytes - usedBytes : NaN;
+  const activationDate = String(planAttachment?.activation_at || "");
+  const expiryDate = String(planAttachment?.expiration_at || "");
+  const planCountry = String(plan?.region_code || "");
+  const planDays = Number(plan?.period_days ?? "");
+  const isThrottled = plan?.throttling === true;
+  const isRecurring = plan?.recurring === true;
+  const lpaString = String((subData as AnyRecord)?.subscription?.esim?.lpastring || "");
 
-  // Coverage lists
-  const covCountries = Array.isArray((covData as AnyRecord)?.countries)
-    ? ((covData as AnyRecord).countries as string[])
+  // Location: { location: { last_operator: { country, operator, event_time, rat, imei } } }
+  const lastOp = (locData as AnyRecord)?.location?.last_operator as AnyRecord | undefined;
+
+  // Coverage: response varies — extract what we can
+  const covRaw = covData as AnyRecord | null;
+  const covCountries = Array.isArray(covRaw?.countries)
+    ? (covRaw.countries as string[])
     : [];
-  const covNetworks = Array.isArray((covData as AnyRecord)?.networks)
-    ? ((covData as AnyRecord).networks as string[])
+  const covNetworks = Array.isArray(covRaw?.networks)
+    ? (covRaw.networks as string[])
     : [];
 
   return (
@@ -249,8 +235,7 @@ export function IccidLookup() {
             badge={
               subStatus
                 ? {
-                    label:
-                      subStatus.charAt(0).toUpperCase() + subStatus.slice(1),
+                    label: subStatus.charAt(0).toUpperCase() + subStatus.slice(1).toLowerCase(),
                     className: subStatusClass(subStatus),
                   }
                 : null
@@ -258,36 +243,45 @@ export function IccidLookup() {
           >
             <div>
               {planName && <KVRow label="Plan" value={planName} />}
-              {!isNaN(dataRemaining) && !isNaN(dataTotal) && (
-                <KVRow
-                  label="Data"
-                  value={`${formatBytes(dataRemaining)} / ${formatBytes(dataTotal)}`}
-                />
+              {planCountry && <KVRow label="Country" value={planCountry} />}
+              {!isNaN(usedBytes) && !isNaN(totalBytes) && (
+                <>
+                  <KVRow
+                    label="Data Used"
+                    value={`${formatBytes(usedBytes)} / ${formatBytes(totalBytes)}`}
+                  />
+                  {!isNaN(remainingBytes) && (
+                    <KVRow label="Remaining" value={formatBytes(remainingBytes)} />
+                  )}
+                  {/* Progress bar */}
+                  <div className="mt-1.5 h-2 w-full rounded-full bg-parchment/60 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        usedBytes / totalBytes > 0.9 ? "bg-fraud-red" :
+                        usedBytes / totalBytes > 0.7 ? "bg-fraud-yellow" : "bg-amethyst"
+                      }`}
+                      style={{ width: `${Math.min((usedBytes / totalBytes) * 100, 100)}%` }}
+                    />
+                  </div>
+                </>
               )}
-              {!isNaN(dataRemaining) && isNaN(dataTotal) && (
-                <KVRow label="Data Remaining" value={formatBytes(dataRemaining)} />
+              {!isNaN(usedBytes) && isNaN(totalBytes) && (
+                <KVRow label="Data Used" value={formatBytes(usedBytes)} />
               )}
+              {planDays > 0 && <KVRow label="Period" value={`${planDays} days`} />}
               {activationDate && (
                 <KVRow label="Activated" value={activationDate.slice(0, 10)} />
               )}
               {expiryDate && (
                 <KVRow label="Expires" value={expiryDate.slice(0, 10)} />
               )}
-              {/* Fallback: render remaining top-level string/number fields */}
-              {subData &&
-                !planName &&
-                !subStatus &&
-                Object.entries(subData)
-                  .filter(
-                    ([k, v]) =>
-                      typeof v === "string" || typeof v === "number"
-                        ? !["status", "state", "subscription_status"].includes(k)
-                        : false
-                  )
-                  .slice(0, 6)
-                  .map(([k, v]) => (
-                    <KVRow key={k} label={k} value={String(v)} />
-                  ))}
+              {isThrottled && <KVRow label="Throttling" value="Enabled" />}
+              {isRecurring && <KVRow label="Recurring" value="Yes" />}
+              {lpaString && (
+                <KVRow label="LPA" value={
+                  <span className="text-[10px] font-mono break-all">{lpaString}</span>
+                } />
+              )}
             </div>
           </LookupCard>
 
@@ -297,34 +291,20 @@ export function IccidLookup() {
             icon={<MapPin className="h-3.5 w-3.5 text-amethyst" />}
             loading={locLoading}
             error={locError}
-            empty={!locData && !locLoading && !locError}
+            empty={!lastOp && !locLoading && !locError}
           >
             <div>
+              <KVRow label="Country" value={String(lastOp?.country || "")} />
+              <KVRow label="Country Code" value={String(lastOp?.country_alpha_2 || "").toUpperCase()} />
+              <KVRow label="Operator" value={String(lastOp?.operator || "")} />
+              <KVRow label="RAT" value={String(lastOp?.rat || "")} />
+              <KVRow label="IMEI" value={String(lastOp?.imei || "")} />
               <KVRow
-                label="Country"
-                value={String(
-                  (locData as AnyRecord)?.country ||
-                    (locData as AnyRecord)?.country_name ||
-                    ""
-                )}
-              />
-              <KVRow
-                label="Network"
-                value={String(
-                  (locData as AnyRecord)?.network ||
-                    (locData as AnyRecord)?.operator ||
-                    (locData as AnyRecord)?.network_name ||
-                    ""
-                )}
-              />
-              <KVRow
-                label="Last Update"
-                value={String(
-                  (locData as AnyRecord)?.timestamp ||
-                    (locData as AnyRecord)?.last_seen ||
-                    (locData as AnyRecord)?.updated_at ||
-                    ""
-                )}
+                label="Last Seen"
+                value={lastOp?.event_time
+                  ? new Date(String(lastOp.event_time)).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                  : ""
+                }
               />
             </div>
           </LookupCard>
