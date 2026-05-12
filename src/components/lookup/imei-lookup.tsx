@@ -580,7 +580,7 @@ export function ImeiLookup() {
                 .sort((a, b) => (a.status === "VALID" ? 0 : 1) - (b.status === "VALID" ? 0 : 1))
                 .slice(0, 10)
                 .map((offer, i) => {
-                const isValid = offer.status === "VALID";
+                const isPlanValid = offer.status === "VALID";
                 // Calculate data consumed for this plan by matching CDR package to offer goodsId
                 const consumed = usageData.reduce((sum, row) => {
                   if (offer.goodsId && String(row.package) === offer.goodsId) {
@@ -588,72 +588,110 @@ export function ImeiLookup() {
                   }
                   return sum;
                 }, 0);
+
+                // Determine consumption display values
+                const hasAllowance = offer.flowByte != null && offer.surplusFlowbyte != null;
+                const usedBytes = hasAllowance
+                  ? Number(offer.flowByte) - Number(offer.surplusFlowbyte)
+                  : consumed;
+                const totalBytes = hasAllowance ? Number(offer.flowByte) : null;
+                const usagePct = totalBytes && totalBytes > 0 ? Math.min(100, (usedBytes / totalBytes) * 100) : null;
+
+                const attrs = describePlanAttrs(offer);
+
                 return (
                   <div
                     key={i}
-                    className="rounded-[8px] bg-parchment/30 px-2.5 py-2"
+                    className={`rounded-[8px] border px-3 py-2.5 ${
+                      isPlanValid
+                        ? "bg-parchment/40 border-parchment"
+                        : "bg-muted/20 border-muted/40 opacity-70"
+                    }`}
                   >
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-[12px] font-[600] text-charcoal">
+                    {/* Row 1: Plan name + badges */}
+                    <div className="flex items-start justify-between gap-2">
+                      <p className={`text-[12px] font-[600] leading-snug ${isPlanValid ? "text-charcoal" : "text-charcoal/50"}`}>
                         {offer.goodsName || offer.goodsTypeName || "Plan"}
                       </p>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-[540] ${isValid ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
-                        {offer.status || "Unknown"}
-                      </span>
-                      {offer.attrMap?.areaFlag && (
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-[540] ${
-                          offer.attrMap.areaFlag === "LOCAL"
-                            ? "bg-lavender/20 text-amethyst"
-                            : "bg-fraud-yellow-soft text-fraud-yellow"
+                      <div className="flex items-center gap-1 shrink-0">
+                        {offer.attrMap?.areaFlag && (
+                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-[540] ${
+                            offer.attrMap.areaFlag === "LOCAL"
+                              ? "bg-lavender/20 text-amethyst"
+                              : "bg-fraud-yellow-soft text-fraud-yellow"
+                          }`}>
+                            {offer.attrMap.areaFlag === "LOCAL" ? "Local" : "Roaming"}
+                          </span>
+                        )}
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-[540] ${
+                          isPlanValid ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"
                         }`}>
-                          {offer.attrMap.areaFlag === "LOCAL" ? "Local vSIM" : "Roaming vSIM"}
+                          {offer.status || "Unknown"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Row 2: Data consumption — most important, displayed prominently */}
+                    <div className="mt-2">
+                      {(hasAllowance || consumed > 0) ? (
+                        <div>
+                          <div className="flex items-baseline justify-between mb-1">
+                            <span className={`text-[15px] font-[700] tabular-nums ${isPlanValid ? "text-charcoal" : "text-charcoal/50"}`}>
+                              {formatBytes(usedBytes)}
+                            </span>
+                            {totalBytes && (
+                              <span className="text-[11px] font-[460] text-muted-foreground tabular-nums">
+                                of {formatBytes(totalBytes)}
+                              </span>
+                            )}
+                          </div>
+                          {usagePct !== null && (
+                            <div className="h-1.5 w-full rounded-full bg-parchment overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  usagePct >= 90 ? "bg-fraud-red" : usagePct >= 70 ? "bg-fraud-yellow" : "bg-amethyst"
+                                }`}
+                                style={{ width: `${usagePct}%` }}
+                              />
+                            </div>
+                          )}
+                          {!hasAllowance && consumed > 0 && (
+                            <p className="text-[10px] font-[460] text-muted-foreground mt-0.5">consumed (CDR match)</p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-[12px] font-[460] text-muted-foreground/60 italic">No usage recorded</p>
+                      )}
+                    </div>
+
+                    {/* Row 3: Dates + SKU on one line */}
+                    <div className="mt-2 flex items-center gap-3 flex-wrap">
+                      {offer.effectiveTime && (
+                        <span className="text-[11px] font-[460] text-muted-foreground">
+                          {formatDate(offer.effectiveTime)}
+                          {offer.expiryTime ? ` – ${formatDate(offer.expiryTime)}` : ""}
+                        </span>
+                      )}
+                      {offer.goodsCode && (
+                        <span className="ml-auto font-mono text-[10px] font-[500] text-muted-foreground/60 tracking-tight">
+                          {offer.goodsCode}
                         </span>
                       )}
                     </div>
-                    {offer.goodsCode && (
-                      <p className="mt-0.5 text-[11px] font-[460] text-muted-foreground">
-                        SKU: {offer.goodsCode}
-                      </p>
+
+                    {/* Row 4: Plan attribute pills (type, coverage, renewal) */}
+                    {attrs.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {attrs.map((attr, ai) => (
+                          <span
+                            key={ai}
+                            className="rounded-[8px] bg-parchment px-1.5 py-0.5 text-[10px] font-[460] text-charcoal/60"
+                          >
+                            {attr}
+                          </span>
+                        ))}
+                      </div>
                     )}
-                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
-                      {offer.effectiveTime && (
-                        <p className="text-[11px] font-[460] text-muted-foreground">
-                          From: {formatDate(offer.effectiveTime)}
-                        </p>
-                      )}
-                      {offer.expiryTime && (
-                        <p className="text-[11px] font-[460] text-muted-foreground">
-                          To: {formatDate(offer.expiryTime)}
-                        </p>
-                      )}
-                    </div>
-                    {offer.flowByte != null && offer.surplusFlowbyte != null ? (
-                      <p className="mt-0.5 text-[11px] font-[460] text-muted-foreground">
-                        Data: {formatBytes(Number(offer.surplusFlowbyte))} / {formatBytes(Number(offer.flowByte))} remaining
-                      </p>
-                    ) : consumed > 0 ? (
-                      <p className="mt-0.5 text-[11px] font-[540] text-amethyst">
-                        Consumed: {formatBytes(consumed)}
-                      </p>
-                    ) : (
-                      <p className="mt-0.5 text-[11px] font-[460] text-muted-foreground">
-                        No usage recorded
-                      </p>
-                    )}
-                    {offer.mccList && offer.mccList.length > 0 && (
-                      <p className="mt-0.5 text-[11px] font-[460] text-muted-foreground">
-                        Countries: {offer.mccList.join(", ")}
-                      </p>
-                    )}
-                    {/* Plan details from attrMap */}
-                    {(() => {
-                      const attrs = describePlanAttrs(offer);
-                      return attrs.length > 0 ? (
-                        <p className="mt-1 text-[11px] font-[460] text-charcoal/60">
-                          {attrs.join(" · ")}
-                        </p>
-                      ) : null;
-                    })()}
                   </div>
                 );
               })}
