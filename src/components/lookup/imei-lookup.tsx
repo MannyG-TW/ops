@@ -593,13 +593,22 @@ export function ImeiLookup() {
                     key={i}
                     className="rounded-[8px] bg-parchment/30 px-2.5 py-2"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-[12px] font-[600] text-charcoal">
                         {offer.goodsName || offer.goodsTypeName || "Plan"}
                       </p>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-[540] ${isValid ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
                         {offer.status || "Unknown"}
                       </span>
+                      {offer.attrMap?.areaFlag && (
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-[540] ${
+                          offer.attrMap.areaFlag === "LOCAL"
+                            ? "bg-lavender/20 text-amethyst"
+                            : "bg-fraud-yellow-soft text-fraud-yellow"
+                        }`}>
+                          {offer.attrMap.areaFlag === "LOCAL" ? "Local vSIM" : "Roaming vSIM"}
+                        </span>
+                      )}
                     </div>
                     {offer.goodsCode && (
                       <p className="mt-0.5 text-[11px] font-[460] text-muted-foreground">
