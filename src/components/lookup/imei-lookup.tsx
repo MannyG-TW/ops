@@ -63,7 +63,34 @@ interface DeviceBinding {
   imei?: string;
   status?: string;
   userCode?: string;
-  [key: string]: unknown;
+  customerName?: string;
+}
+
+interface DeviceDetail {
+  userCode?: string;
+  imei?: string;
+  customerId?: string;
+  status?: string;
+  isActivation?: string;
+  tmlStatus?: string;
+  tmlType?: string;
+  sVersion?: string;
+  orgName?: string;
+  orgCode?: string;
+  mvnoName?: string;
+  seedIccid?: string;
+  seedImsi?: string;
+  amount?: number;
+  currencyType?: string;
+  lockFlag?: string;
+  activeFlag?: string;
+  buType?: string;
+  createTime?: number;
+  userCreateTime?: number;
+  tmlPwd?: string;
+  email?: string;
+  operatorName?: string;
+  regsiterSource?: string;
 }
 
 interface OrderResult {
@@ -146,10 +173,15 @@ export function ImeiLookup() {
   const [termData, setTermData] = useState<TerminalData | null>(null);
   const [termAllData, setTermAllData] = useState<AllTerminalData | null>(null);
 
-  // Device info
+  // Device info (BSS — binding + offers)
   const [devLoading, setDevLoading] = useState(false);
   const [devError, setDevError] = useState<string | null>(null);
   const [devBinding, setDevBinding] = useState<DeviceBinding | null>(null);
+
+  // Device detail (QueryCustomerForkf — rich account/device data)
+  const [detLoading, setDetLoading] = useState(false);
+  const [detError, setDetError] = useState<string | null>(null);
+  const [detData, setDetData] = useState<DeviceDetail | null>(null);
 
   // Orders
   const [ordLoading, setOrdLoading] = useState(false);
@@ -225,7 +257,24 @@ export function ImeiLookup() {
         setOffLoading(false);
       });
 
-    // 3. Orders (search by IMEI)
+    // 3. Device detail (QueryCustomerForkf — rich account/device data)
+    setDetLoading(true);
+    setDetError(null);
+    setDetData(null);
+    fetch("/api/ucl/device-detail", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imei: trimmed }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.ok) setDetError(d.error || "Failed to fetch device detail");
+        else setDetData(d.detail ?? null);
+      })
+      .catch((e: Error) => setDetError(e.message))
+      .finally(() => setDetLoading(false));
+
+    // 4. Orders (search by IMEI)
     setOrdLoading(true);
     setOrdError(null);
     setOrdData([]);
@@ -352,23 +401,30 @@ export function ImeiLookup() {
           <LookupCard
             title="Device Info"
             icon={<Smartphone className="h-3.5 w-3.5 text-amethyst" />}
-            loading={devLoading}
-            error={devError}
-            empty={!devBinding && !termAllData && !devLoading && !devError}
+            loading={detLoading && devLoading}
+            error={detError || devError}
+            empty={!detData && !devBinding && !detLoading && !devLoading}
+            badge={detData?.isActivation ? {
+              label: detData.isActivation,
+              className: detData.isActivation === "ACTIVATED" ? "bg-success-soft text-success" : "bg-muted text-muted-foreground",
+            } : null}
           >
             <div>
               <KVRow label="Device" value={resolved.name} />
-              <KVRow label="Org" value={termAllData?.u_orgName || ""} />
-              <KVRow
-                label="Terminal Type"
-                value={devBinding?.terminalType || termAllData?.devicetype || ""}
-              />
-              <KVRow label="Software" value={termAllData?.softversion || ""} />
-              <KVRow
-                label="User"
-                value={termAllData?.userCode || devBinding?.userCode || ""}
-              />
-              <KVRow label="Status" value={devBinding?.status || ""} />
+              <KVRow label="Model" value={detData?.tmlType || devBinding?.terminalType || ""} />
+              <KVRow label="Firmware" value={detData?.sVersion || ""} />
+              <KVRow label="Org" value={detData?.orgName || ""} />
+              <KVRow label="MVNO" value={detData?.mvnoName || ""} />
+              <KVRow label="Bind Account" value={detData?.userCode || devBinding?.customerName || ""} />
+              <KVRow label="Account Status" value={detData?.status ? detData.status.charAt(0).toUpperCase() + detData.status.slice(1) : ""} />
+              <KVRow label="Device Status" value={detData?.tmlStatus || ""} />
+              <KVRow label="Locked" value={detData?.lockFlag === "1" ? "Yes" : detData?.lockFlag === "0" ? "No" : ""} />
+              <KVRow label="Seed ICCID" value={detData?.seedIccid || ""} />
+              <KVRow label="Seed IMSI" value={detData?.seedImsi || ""} />
+              <KVRow label="Balance" value={detData?.amount != null ? `${detData.amount.toFixed(2)} ${detData.currencyType || ""}` : ""} />
+              <KVRow label="Import Date" value={detData?.createTime ? formatDate(detData.createTime) : ""} />
+              <KVRow label="Created By" value={detData?.operatorName || ""} />
+              <KVRow label="Source" value={detData?.regsiterSource || ""} />
             </div>
           </LookupCard>
 
