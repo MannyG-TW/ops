@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 /* ─── Internal Notes ─── */
 export const internalNotes = sqliteTable("internal_notes", {
@@ -226,3 +226,96 @@ export const dashboardConfig = sqliteTable("dashboard_config", {
 
 export type InsertDashboardConfig = typeof dashboardConfig.$inferInsert;
 export type SelectDashboardConfig = typeof dashboardConfig.$inferSelect;
+
+/* ─── Marketing: Customer Segments ─── */
+// Materialized snapshot of OpenSearch purchasers — one row per (email × product
+// segment). Rebuilt by the /api/marketing/sync action. The /marketing console
+// queries THIS table (not OpenSearch) for all search/filter/export work.
+export const marketingCustomerSegments = sqliteTable("marketing_customer_segments", {
+  id: text("id").primaryKey(), // UUIDv4
+  email: text("email").notNull(),
+  name: text("name").notNull().default(""),
+  firstName: text("first_name").notNull().default(""),
+  phone: text("phone").notNull().default(""),
+  system: text("system").notNull().default(""), // twus / tweu / …
+  segment: text("segment").notNull(), // "eSIM" | "Rental" | "Sapphire" | "Other"
+  firstPurchase: integer("first_purchase"), // epoch SECONDS
+  lastPurchase: integer("last_purchase"), // epoch SECONDS
+  orders: integer("orders").notNull().default(0),
+  totalSpentUsd: real("total_spent_usd").notNull().default(0),
+  destinations: text("destinations").notNull().default(""), // comma-separated country/region names
+  syncedAt: integer("synced_at", { mode: "timestamp" }).notNull(),
+}, (t) => [
+  uniqueIndex("mcs_email_segment_idx").on(t.email, t.segment),
+  index("mcs_email_idx").on(t.email),
+  index("mcs_segment_idx").on(t.segment),
+  index("mcs_last_purchase_idx").on(t.lastPurchase),
+]);
+
+export type InsertMarketingCustomerSegment = typeof marketingCustomerSegments.$inferInsert;
+export type SelectMarketingCustomerSegment = typeof marketingCustomerSegments.$inferSelect;
+
+/* ─── Marketing: Omnisend Contacts ─── */
+// Materialized from an uploaded Omnisend CSV export — one row per email.
+// Joined onto customer segments at query time for consent/contact enrichment.
+export const marketingContacts = sqliteTable("marketing_contacts", {
+  email: text("email").primaryKey(), // lowercased
+  firstName: text("first_name").notNull().default(""),
+  lastName: text("last_name").notNull().default(""),
+  phone: text("phone").notNull().default(""),
+  emailStatus: text("email_status").notNull().default(""), // "Subscribed" | "Unsubscribed" | …
+  emailConsent: text("email_consent").notNull().default(""),
+  optIn: text("opt_in").notNull().default(""),
+  smsStatus: text("sms_status").notNull().default(""),
+  city: text("city").notNull().default(""),
+  state: text("state").notNull().default(""),
+  country: text("country").notNull().default(""),
+  tags: text("tags").notNull().default(""),
+  segments: text("segments").notNull().default(""),
+  importedAt: integer("imported_at", { mode: "timestamp" }).notNull(),
+});
+
+export type InsertMarketingContact = typeof marketingContacts.$inferInsert;
+export type SelectMarketingContact = typeof marketingContacts.$inferSelect;
+
+/* ─── Marketing: Excluded Domains ─── */
+// Email domains suppressed from marketing exports (internal/test). Growing list.
+export const excludedDomains = sqliteTable("excluded_domains", {
+  id: text("id").primaryKey(), // UUIDv4
+  domain: text("domain").notNull(), // lowercased, e.g. "travelwifi.com"
+  note: text("note"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  createdBy: text("created_by"),
+}, (t) => [
+  uniqueIndex("excluded_domains_domain_idx").on(t.domain),
+]);
+
+export type InsertExcludedDomain = typeof excludedDomains.$inferInsert;
+export type SelectExcludedDomain = typeof excludedDomains.$inferSelect;
+
+/* ─── Marketing: Excluded Names ─── */
+// Customer names suppressed regardless of domain (matched with variant expansion).
+export const excludedNames = sqliteTable("excluded_names", {
+  id: text("id").primaryKey(), // UUIDv4
+  name: text("name").notNull(),
+  note: text("note"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  createdBy: text("created_by"),
+});
+
+export type InsertExcludedName = typeof excludedNames.$inferInsert;
+export type SelectExcludedName = typeof excludedNames.$inferSelect;
+
+/* ─── Marketing: Sync State ─── */
+// Singleton (id = "default") recording when each source was last materialized.
+export const marketingSyncState = sqliteTable("marketing_sync_state", {
+  id: text("id").primaryKey(), // always "default"
+  osSyncedAt: integer("os_synced_at", { mode: "timestamp" }),
+  osSegmentRows: integer("os_segment_rows").notNull().default(0),
+  osCustomers: integer("os_customers").notNull().default(0),
+  omnisendImportedAt: integer("omnisend_imported_at", { mode: "timestamp" }),
+  omnisendContacts: integer("omnisend_contacts").notNull().default(0),
+});
+
+export type InsertMarketingSyncState = typeof marketingSyncState.$inferInsert;
+export type SelectMarketingSyncState = typeof marketingSyncState.$inferSelect;

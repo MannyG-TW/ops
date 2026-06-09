@@ -51,3 +51,6 @@ next-env.d.ts
 
 # local agent state (oh-my-claudecode, sessions, project memory)
 /.omc/
+
+# scratch dir — holds PII marketing exports, never commit
+/delme/

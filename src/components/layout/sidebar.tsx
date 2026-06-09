@@ -15,6 +15,7 @@ import {
   LogOut,
   AlertTriangle,
   Megaphone,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -32,6 +33,7 @@ const navItems = [
 const supervisorItems = [
   { href: "/escalations", label: "Escalations", icon: AlertTriangle },
   { href: "/broadcasts", label: "Broadcasts", icon: Megaphone },
+  { href: "/marketing", label: "Marketing", icon: Send },
 ];
 
 const adminItems = [

@@ -1,0 +1,13 @@
+{
+  "_README": "Edit this file to grow the exclusion lists. The merge script (marketing-customer-merge.mjs) reads it at run time — no code changes needed. 'domains' = exact match on the part after '@' (case-insensitive). 'names' = matched loosely: a contact is excluded if ALL words of a listed name appear in their name or email handle (case/spacing/order-insensitive), so 'Wallace Davis' also catches 'DAVIS, WALLACE' and 'wallace.davis@gmail.com'. Excluded contacts are moved to the 'Excluded' tab with the reason.",
+  "domains": [
+    "travelwifi.com",
+    "mynavimo.com",
+    "sapphirego.com",
+    "dhitelecom.com"
+  ],
+  "names": [
+    "Wallace Davis",
+    "Alex Bermudez"
+  ]
+}

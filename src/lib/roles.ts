@@ -14,6 +14,7 @@ const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     "tellisim:suspend",
     "tellisim:send-sms",
     "opensearch:read",
+    "marketing:read",
   ],
   admin: [
     "tellisim:read",
@@ -23,6 +24,7 @@ const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     "opensearch:read",
     "opensearch:write",
     "settings:write",
+    "marketing:read",
   ],
 };
 
@@ -34,6 +36,15 @@ export function hasPermission(role: UserRole, permission: string): boolean {
   if (!perms) return false;
   return perms.includes(permission);
 }
+
+/** Map external role strings to our role system */
+export const ROLE_MAP: Record<string, UserRole> = {
+  admin: "admin",
+  manager: "supervisor",
+  supervisor: "supervisor",
+  agent: "agent",
+  viewer: "agent",
+};
 
 /**
  * Get the current user role from localStorage settings.
@@ -52,4 +63,13 @@ export function getCurrentRole(): UserRole {
     // ignore
   }
   return "agent";
+}
+
+/**
+ * Get the current user's effective role by checking their team member record.
+ * Use this in components that have access to TEAM_MEMBERS.
+ */
+export function getRoleFromTeamMember(memberRole: string | undefined): UserRole {
+  if (!memberRole) return "agent";
+  return ROLE_MAP[memberRole] ?? "agent";
 }
