@@ -297,7 +297,8 @@ export type SelectExcludedDomain = typeof excludedDomains.$inferSelect;
 // Customer names suppressed regardless of domain (matched with variant expansion).
 export const excludedNames = sqliteTable("excluded_names", {
   id: text("id").primaryKey(), // UUIDv4
-  name: text("name").notNull(),
+  name: text("name").notNull(), // a name, or a full email address (matched exactly)
+  variants: integer("variants", { mode: "boolean" }).notNull().default(true), // expand nickname variants?
   note: text("note"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   createdBy: text("created_by"),

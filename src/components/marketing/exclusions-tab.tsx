@@ -7,15 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, ShieldAlert } from "lucide-react";
 import { mfetch } from "@/lib/marketing/client";
+import { ExcludeDialog } from "@/components/marketing/exclude-dialog";
 
 interface Domain { id: string; domain: string; note?: string | null; }
-interface Name { id: string; name: string; note?: string | null; }
+interface Name { id: string; name: string; variants?: boolean; note?: string | null; }
 
 export function ExclusionsTab({ onChanged }: { onChanged: () => void }) {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [names, setNames] = useState<Name[]>([]);
   const [newDomain, setNewDomain] = useState("");
-  const [newName, setNewName] = useState("");
+  const [domErr, setDomErr] = useState("");
+  const [dlgOpen, setDlgOpen] = useState(false);
   const [impact, setImpact] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -38,16 +40,11 @@ export function ExclusionsTab({ onChanged }: { onChanged: () => void }) {
   async function addDomain() {
     const v = newDomain.trim();
     if (!v) return;
+    setDomErr("");
     const res = await mfetch("/api/marketing/exclusions/domains", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain: v }) });
     const data = await res.json();
-    if (!data.ok) { alert(data.error); return; }
+    if (!data.ok) { setDomErr(data.error || "Could not add domain"); return; }
     setNewDomain(""); await load(); onChanged();
-  }
-  async function addName() {
-    const v = newName.trim();
-    if (!v) return;
-    await mfetch("/api/marketing/exclusions/names", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: v }) });
-    setNewName(""); await load(); onChanged();
   }
   async function delDomain(id: string) { await mfetch(`/api/marketing/exclusions/domains?id=${id}`, { method: "DELETE" }); await load(); onChanged(); }
   async function delName(id: string) { await mfetch(`/api/marketing/exclusions/names?id=${id}`, { method: "DELETE" }); await load(); onChanged(); }
@@ -68,6 +65,7 @@ export function ExclusionsTab({ onChanged }: { onChanged: () => void }) {
               <Input value={newDomain} onChange={(e) => setNewDomain(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addDomain()} placeholder="example.com" />
               <Button onClick={addDomain} className="gap-1 shrink-0"><Plus className="h-4 w-4" /> Add</Button>
             </div>
+            {domErr && <p className="text-[12px] text-destructive">{domErr}</p>}
             <ul className="space-y-1">
               {domains.map((d) => (
                 <li key={d.id} className="flex items-center justify-between rounded-[8px] border border-border px-3 py-1.5 text-[13px]">
@@ -83,14 +81,15 @@ export function ExclusionsTab({ onChanged }: { onChanged: () => void }) {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-[15px]">Excluded names ({names.length})</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex gap-2">
-              <Input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addName()} placeholder="Wallace Davis" />
-              <Button onClick={addName} className="gap-1 shrink-0"><Plus className="h-4 w-4" /> Add</Button>
-            </div>
+            <Button onClick={() => setDlgOpen(true)} className="gap-1"><Plus className="h-4 w-4" /> Add name…</Button>
             <ul className="space-y-1">
               {names.map((n) => (
                 <li key={n.id} className="flex items-center justify-between rounded-[8px] border border-border px-3 py-1.5 text-[13px]">
-                  <span>{n.name} <Badge variant="secondary" className="ml-1 text-[10px]">+ variants</Badge></span>
+                  <span>{n.name}{" "}
+                    <Badge variant="secondary" className="ml-1 text-[10px]">
+                      {n.name.includes("@") ? "exact email" : n.variants === false ? "exact" : "+ variants"}
+                    </Badge>
+                  </span>
                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => delName(n.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </li>
               ))}
@@ -102,6 +101,8 @@ export function ExclusionsTab({ onChanged }: { onChanged: () => void }) {
       <p className="text-[12px] text-muted-foreground">
         Names match loosely: all words must appear in a customer&apos;s name or email handle, with nickname variants (Alex ↔ Alexander) and order-insensitive. Excluded customers are moved to the Excluded tab of every export.
       </p>
+
+      <ExcludeDialog open={dlgOpen} onOpenChange={setDlgOpen} seed={{}} onAdded={() => { load(); onChanged(); }} />
     </div>
   );
 }

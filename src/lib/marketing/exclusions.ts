@@ -53,27 +53,42 @@ export interface ExclusionMatcher {
   reason(email: string, name: string): string;
 }
 
-/** Build a matcher from the current rule sets (so callers reuse one per export). */
+/**
+ * Build a matcher from the current rule sets (so callers reuse one per export).
+ *
+ * A `names` entry is matched as an EXACT EMAIL when its value contains "@",
+ * otherwise as a name. Name rules expand nickname variants + prefix only when
+ * `variants !== false`; with variants off the name must match exactly (all
+ * tokens present, no expansion) — i.e. "as is".
+ */
 export function buildMatcher(
   domains: { domain: string }[],
-  names: { name: string }[],
+  names: { name: string; variants?: boolean }[],
 ): ExclusionMatcher {
   const domainSet = new Set(domains.map((d) => d.domain.toLowerCase().trim()));
-  const nameRules = names.map((n) => ({ label: n.name, tokens: nameTokens(n.name) }));
+  const emailSet = new Set<string>();
+  const nameRules: { label: string; tokens: string[]; variants: boolean }[] = [];
+  for (const n of names) {
+    if (String(n.name).includes("@")) emailSet.add(String(n.name).toLowerCase().trim());
+    else nameRules.push({ label: n.name, tokens: nameTokens(n.name), variants: n.variants !== false });
+  }
 
   return {
     reason(email: string, name: string): string {
-      const domain = (String(email).split("@")[1] || "").toLowerCase();
+      const e = String(email).toLowerCase().trim();
+      if (emailSet.has(e)) return `email: ${e}`;
+      const domain = (e.split("@")[1] || "");
       if (domainSet.has(domain)) return `domain: ${domain}`;
       if (nameRules.length) {
-        const local = (String(email).split("@")[0] || "").replace(/[._\-+]+/g, " ");
+        const local = (e.split("@")[0] || "").replace(/[._\-+]+/g, " ");
         const words = new Set(normalizeName(`${name} ${local}`).split(" ").filter(Boolean));
         for (const rule of nameRules) {
           if (!rule.tokens.length) continue;
           const hitsAll = rule.tokens.every((t) => {
             if (words.has(t)) return true;
+            if (!rule.variants) return false; // "as is" — exact tokens only
             for (const v of expandVariants(t)) if (words.has(v)) return true;
-            return [...words].some((w) => w.startsWith(t));
+            return [...words].some((w) => w.startsWith(t)); // prefix only when variants on
           });
           if (hitsAll) return `name: ${rule.label}`;
         }

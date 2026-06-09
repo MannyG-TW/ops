@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Search, UserX, Ban, Loader2 } from "lucide-react";
+import { Search, ShieldX, Loader2 } from "lucide-react";
 import { mfetch } from "@/lib/marketing/client";
+import { ExcludeDialog } from "@/components/marketing/exclude-dialog";
 
 interface Hit {
   email: string; name: string; phone: string; system: string;
@@ -20,6 +21,7 @@ export function SearchTab({ onExclusionAdded }: { onExclusionAdded: () => void }
   const [variants, setVariants] = useState(true);
   const [loading, setLoading] = useState(false);
   const [hits, setHits] = useState<Hit[] | null>(null);
+  const [exclSeed, setExclSeed] = useState<{ name?: string; email?: string } | null>(null);
 
   async function run() {
     if (!q.trim()) return;
@@ -31,19 +33,7 @@ export function SearchTab({ onExclusionAdded }: { onExclusionAdded: () => void }
     } finally { setLoading(false); }
   }
 
-  async function excludeName(name: string) {
-    if (!name || !confirm(`Exclude everyone matching the name "${name}" from marketing exports?`)) return;
-    await mfetch("/api/marketing/exclusions/names", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-    onExclusionAdded();
-    run();
-  }
-  async function excludeDomain(email: string) {
-    const domain = email.split("@")[1];
-    if (!domain || !confirm(`Exclude the entire domain "${domain}"?`)) return;
-    await mfetch("/api/marketing/exclusions/domains", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain }) });
-    onExclusionAdded();
-    run();
-  }
+  // Exclusions are added via the ExcludeDialog modal (no browser popups).
 
   return (
     <div className="space-y-4">
@@ -94,14 +84,9 @@ export function SearchTab({ onExclusionAdded }: { onExclusionAdded: () => void }
                       : <span className={h.emailStatus === "Subscribed" ? "text-emerald-600" : h.emailStatus === "Unsubscribed" ? "text-destructive" : "text-muted-foreground"}>{h.emailStatus}</span>}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-[12px]" onClick={() => excludeName(h.name)} disabled={!h.name}>
-                        <UserX className="h-3.5 w-3.5" /> name
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-[12px]" onClick={() => excludeDomain(h.email)}>
-                        <Ban className="h-3.5 w-3.5" /> domain
-                      </Button>
-                    </div>
+                    <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-[12px]" onClick={() => setExclSeed({ name: h.name, email: h.email })}>
+                      <ShieldX className="h-3.5 w-3.5" /> Exclude…
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -109,6 +94,13 @@ export function SearchTab({ onExclusionAdded }: { onExclusionAdded: () => void }
           </table>
         </div>
       )}
+
+      <ExcludeDialog
+        open={!!exclSeed}
+        onOpenChange={(o) => { if (!o) setExclSeed(null); }}
+        seed={exclSeed ?? {}}
+        onAdded={() => { onExclusionAdded(); run(); }}
+      />
     </div>
   );
 }

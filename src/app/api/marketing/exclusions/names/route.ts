@@ -17,11 +17,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const denied = marketingForbidden(req); if (denied) return denied;
   try {
-    const { name, note, createdBy } = await req.json();
+    const { name, note, createdBy, variants } = await req.json();
     const clean = String(name || "").trim();
     if (!clean) return NextResponse.json({ ok: false, error: "Name required" }, { status: 400 });
     db.insert(excludedNames)
-      .values({ id: randomUUID(), name: clean, note: note ?? null, createdAt: new Date(), createdBy: createdBy ?? null })
+      .values({
+        id: randomUUID(), name: clean, variants: variants !== false,
+        note: note ?? null, createdAt: new Date(), createdBy: createdBy ?? null,
+      })
       .run();
     return NextResponse.json({ ok: true });
   } catch (err) {

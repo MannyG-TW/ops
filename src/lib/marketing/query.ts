@@ -65,7 +65,7 @@ export function searchCustomers(query: string, opts: { variants?: boolean; limit
         email: r.email, name: r.name, firstName: r.firstName, phone: r.phone, system: r.system,
         segments: [], orders: 0, totalSpentUsd: 0, lastPurchase: "", destinations: "",
         inOmnisend: r.emailStatus != null, emailStatus: r.emailStatus || "Not in Omnisend",
-        excludedReason: matcher.reason(r.email, r.name),
+        excludedReason: matcher.reason(r.email, [r.name, r.firstName].filter(Boolean).join(" ")),
       };
       byEmail.set(r.email, hit);
     }
@@ -195,7 +195,11 @@ export function runCriteria(criteria: Criteria): CriteriaResult {
       city: r.city || "", state: r.state || "", country: r.country || "", tags: r.tags || "",
     };
 
-    const reason = matcher.reason(r.email, customerName);
+    // Feed the matcher EVERY available name signal (segment name, derived first
+    // name, and Omnisend first/last) so a blank/partial r.name can't let an
+    // excluded name slip into sendable. (Codex review, false-negative hardening.)
+    const nameForMatch = [r.name, r.firstName, r.cFirst, r.cLast].filter(Boolean).join(" ") || customerName;
+    const reason = matcher.reason(r.email, nameForMatch);
     if (reason) { excluded.push({ ...row, reason }); continue; }
     if (inOmni && r.emailStatus === "Unsubscribed") { unsubscribed.push(row); continue; }
     if (sub === "subscribed_only" && r.emailStatus !== "Subscribed") continue;

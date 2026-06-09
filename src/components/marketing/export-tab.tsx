@@ -38,6 +38,7 @@ export function ExportTab({ facets }: { facets: Facets }) {
   const [counts, setCounts] = useState<Counts | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [err, setErr] = useState("");
 
   const toggle = (key: "segments" | "systems", v: string) =>
     setC((p) => ({ ...p, [key]: p[key].includes(v) ? p[key].filter((x) => x !== v) : [...p[key], v] }));
@@ -52,10 +53,10 @@ export function ExportTab({ facets }: { facets: Facets }) {
   }
 
   async function exportXlsx() {
-    setExporting(true);
+    setExporting(true); setErr("");
     try {
       const res = await mfetch("/api/marketing/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) });
-      if (!res.ok) { alert("Export failed"); return; }
+      if (!res.ok) { setErr("Export failed — try again."); return; }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -109,6 +110,7 @@ export function ExportTab({ facets }: { facets: Facets }) {
             <Button variant="outline" onClick={preview} disabled={previewing} className="gap-2">{previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Preview</Button>
             <Button onClick={exportXlsx} disabled={exporting} className="gap-2">{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export .xlsx</Button>
           </div>
+          {err && <p className="text-[13px] text-destructive">{err}</p>}
         </CardContent>
       </Card>
 

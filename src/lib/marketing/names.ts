@@ -9,9 +9,15 @@
  * who matched so a broad rule can be reviewed before it's trusted.
  */
 
-/** Lowercase, strip punctuation, collapse whitespace. */
+/** Fold diacritics, lowercase, strip punctuation, collapse whitespace.
+ *  Accent-folding ensures "José" → "jose" so an excluded "Jose" still matches. */
 export function normalizeName(s: string | null | undefined): string {
-  return String(s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  return String(s || "")
+    .normalize("NFKD").replace(/[̀-ͯ]/g, "") // José → Jose, Müller → Muller
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function nameTokens(s: string | null | undefined): string[] {
