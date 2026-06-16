@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import Link from "next/link";
 import {
   Search,
   Signal,
@@ -8,11 +9,25 @@ import {
   Package,
   Globe,
   Activity,
+  History,
+  QrCode,
+  Copy,
+  Check,
+  Download,
+  Smartphone,
+  CheckCircle2,
+  XCircle,
+  WifiOff,
+  ChevronRight,
 } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
+import type { EsimPdfOptions } from "@/lib/esim-pdf";
+import { resolveBrandName } from "@/lib/brands";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { LookupCard, KVRow } from "./lookup-card";
 import { fetchOS, fetchTelliSIM } from "@/lib/settings-client";
+import { getSmdpLabel } from "@/lib/smdp-labels";
 
 // Loose types — TelliSIM API shapes vary
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,6 +73,34 @@ function subStatusClass(status: string): string {
   );
 }
 
+function smdpBadgeClass(
+  severity: "success" | "info" | "warning" | "error"
+): string {
+  switch (severity) {
+    case "success":
+      return "bg-success-soft text-success";
+    case "warning":
+      return "bg-fraud-yellow-soft text-fraud-yellow";
+    case "error":
+      return "bg-fraud-red-soft text-fraud-red";
+    default:
+      return "bg-lavender/20 text-amethyst";
+  }
+}
+
+function formatDateTime(val?: string): string {
+  if (!val) return "—";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function IccidLookup() {
   const [iccid, setIccid] = useState("");
   const [searched, setSearched] = useState(false);
@@ -87,6 +130,11 @@ export function IccidLookup() {
   const [cdrError, setCdrError] = useState<string | null>(null);
   const [cdrRows, setCdrRows] = useState<AnyRecord[]>([]);
 
+  // SMDP profile (state history + SIM/device details)
+  const [smdpLoading, setSmdpLoading] = useState(false);
+  const [smdpError, setSmdpError] = useState<string | null>(null);
+  const [smdpData, setSmdpData] = useState<AnyRecord | null>(null);
+
   // Valid when 19-20 digits starting with "89"
   const isValid = /^89\d{17,18}$/.test(iccid.trim());
 
@@ -95,17 +143,49 @@ export function IccidLookup() {
     if (!isValid) return;
     setSearched(true);
 
-    // 1. Subscription → then chain Coverage using plan's coverage_id
+    // CDR fetch — windowed by the plan's activation date so usage older than
+    // 30 days still shows. A fixed 30-day window returned an empty chart even
+    // when the plan's cumulative counter reported consumed data.
+    const runCdr = (fromISO: string) => {
+      fetchOS("/api/opensearch/cdr", {
+        iccid: trimmed,
+        size: 1000,
+        from: fromISO,
+        to: new Date().toISOString(),
+      })
+        .then((d: AnyRecord) => {
+          const records =
+            d.cdr?.tellisim?.records ??
+            d.cdr?.archive?.records ??
+            d.tellisimCdr?.hits ??
+            d.archiveCdr?.hits ??
+            [];
+          setCdrRows(records as AnyRecord[]);
+        })
+        .catch((e: Error) => setCdrError(e.message))
+        .finally(() => setCdrLoading(false));
+    };
+    const yearAgo = () =>
+      new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+
+    // 1. Subscription → chain Coverage (plan coverage_id) + CDR (activation window)
     setSubLoading(true);
     setSubError(null);
     setSubData(null);
     setCovLoading(true);
     setCovError(null);
     setCovData(null);
+    setCdrLoading(true);
+    setCdrError(null);
+    setCdrRows([]);
     fetchTelliSIM(`/api/tellisim/subscription/${trimmed}`)
       .then((d: AnyRecord) => {
         setSubData(d);
         setSubLoading(false);
+        // CDR window: 1 day before activation → now (fallback: last 365 days)
+        const activation = d?.planAttachments?.data?.[0]?.activation_at;
+        const actMs = activation ? new Date(activation).getTime() : NaN;
+        runCdr(!isNaN(actMs) ? new Date(actMs - 86_400_000).toISOString() : yearAgo());
         // Extract coverage_id from the plan and fetch specific coverage
         const coverageId = d?.planAttachments?.data?.[0]?.plan?.coverage_id;
         if (coverageId) {
@@ -123,6 +203,8 @@ export function IccidLookup() {
         setSubLoading(false);
         setCovError("Subscription failed — cannot load coverage");
         setCovLoading(false);
+        // Still attempt CDR over a wide fallback window
+        runCdr(yearAgo());
       });
 
     // 2. Location
@@ -143,29 +225,14 @@ export function IccidLookup() {
       .catch((e: Error) => setOrdError(e.message))
       .finally(() => setOrdLoading(false));
 
-    // 5. CDR
-    setCdrLoading(true);
-    setCdrError(null);
-    setCdrRows([]);
-    fetchOS("/api/opensearch/cdr", {
-      iccid: trimmed,
-      size: 500,
-      from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-      to: new Date().toISOString(),
-    })
-      .then(
-        (d: AnyRecord) => {
-          const records =
-            d.cdr?.tellisim?.records ??
-            d.cdr?.archive?.records ??
-            d.tellisimCdr?.hits ??
-            d.archiveCdr?.hits ??
-            [];
-          setCdrRows(records as AnyRecord[]);
-        }
-      )
-      .catch((e: Error) => setCdrError(e.message))
-      .finally(() => setCdrLoading(false));
+    // 4. SMDP profile — state history + SIM/device details (EID, LPA)
+    setSmdpLoading(true);
+    setSmdpError(null);
+    setSmdpData(null);
+    fetchTelliSIM(`/api/tellisim/smdp/${trimmed}`)
+      .then((d: AnyRecord) => setSmdpData(d))
+      .catch((e: Error) => setSmdpError(e.message))
+      .finally(() => setSmdpLoading(false));
   };
 
   // Extract subscription fields from actual TelliSIM API response
@@ -184,10 +251,33 @@ export function IccidLookup() {
   const planDays = Number(plan?.period_days ?? "");
   const isThrottled = plan?.throttling === true;
   const isRecurring = plan?.recurring === true;
-  const lpaString = String((subData as AnyRecord)?.subscription?.esim?.lpastring || "");
+  // LPA lives at subscription.data.esim.lpastring (the API wraps the payload in `data`).
+  // Keep the legacy un-wrapped path too for safety.
+  const sub = (subData as AnyRecord)?.subscription as AnyRecord | undefined;
+  const lpaString = String(
+    sub?.data?.esim?.lpastring || sub?.esim?.lpastring || ""
+  );
 
-  // Location: { location: { last_operator: { country, operator, event_time, rat, imei } } }
+  // Location: { location: { last_operator: { country, operator, event_time, rat, imei, brand, model } } }
   const lastOp = (locData as AnyRecord)?.location?.last_operator as AnyRecord | undefined;
+  const deviceBrand = String(lastOp?.brand || "");
+  const deviceModel = String(lastOp?.model || "");
+
+  // SMDP profile: { smdp: { current_status, state_history: [...] }, sim: { eid, lpa, ... } }
+  const smdp = (smdpData as AnyRecord)?.smdp as AnyRecord | undefined;
+  const sim = (smdpData as AnyRecord)?.sim as AnyRecord | undefined;
+  const currentSmdpStatus = String(smdp?.current_status || "");
+  const stateHistory = (smdp?.state_history as AnyRecord[] | undefined) ?? [];
+  // Newest-first timeline
+  const sortedHistory = [...stateHistory].sort((a, b) => {
+    const da = a.modified_at ? new Date(String(a.modified_at)).getTime() : 0;
+    const db = b.modified_at ? new Date(String(b.modified_at)).getTime() : 0;
+    return db - da;
+  });
+  // eUICC chip ID of the device the eSIM was installed on
+  const eid = String(sim?.eid || smdp?.eid || "");
+  // LPA activation code — subscription is primary, SIM details is fallback
+  const lpa = lpaString || String(sim?.lpa || "");
 
   // Coverage: { coverageProfile: { countries: [{ name, iso2, operators: [{ name, supported_rats }] }] } }
   // or from all profiles: { coverageProfiles: [{ countries: [...] }] }
@@ -293,11 +383,6 @@ export function IccidLookup() {
               )}
               {isThrottled && <KVRow label="Throttling" value="Enabled" />}
               {isRecurring && <KVRow label="Recurring" value="Yes" />}
-              {lpaString && (
-                <KVRow label="LPA" value={
-                  <span className="text-[10px] font-mono break-all">{lpaString}</span>
-                } />
-              )}
             </div>
           </LookupCard>
 
@@ -314,7 +399,10 @@ export function IccidLookup() {
               <KVRow label="Country Code" value={String(lastOp?.country_alpha_2 || "").toUpperCase()} />
               <KVRow label="Operator" value={String(lastOp?.operator || "")} />
               <KVRow label="RAT" value={String(lastOp?.rat || "")} />
-              <KVRow label="IMEI" value={String(lastOp?.imei || "")} />
+              <KVRow label="Device IMEI" value={String(lastOp?.imei || "")} />
+              {(deviceBrand || deviceModel) && (
+                <KVRow label="Device" value={[deviceBrand, deviceModel].filter(Boolean).join(" ")} />
+              )}
               <KVRow
                 label="Last Seen"
                 value={lastOp?.event_time
@@ -354,11 +442,13 @@ export function IccidLookup() {
                       year: "numeric",
                     })
                   : "";
-                return (
-                  <div
-                    key={o.id}
-                    className="flex items-start justify-between rounded-[8px] bg-parchment/30 px-2 py-1.5"
-                  >
+                // Link to the customer/order detail page (matches global search).
+                // Requires a customer email to resolve the [id] route.
+                const customerUrl = o.customer_email
+                  ? `/customers/${encodeURIComponent(o.customer_email)}?orderNumber=${encodeURIComponent(o.order_number || o.id)}&serial=${encodeURIComponent(iccid.trim())}`
+                  : null;
+                const inner = (
+                  <>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[12px] font-[600] text-charcoal">
@@ -381,9 +471,30 @@ export function IccidLookup() {
                           ` · $${Number(o.total_usd).toFixed(2)}`}
                       </p>
                     </div>
-                    <span className="shrink-0 ml-2 text-[11px] font-[460] text-muted-foreground">
-                      {date}
-                    </span>
+                    <div className="shrink-0 ml-2 flex items-center gap-1">
+                      <span className="text-[11px] font-[460] text-muted-foreground">
+                        {date}
+                      </span>
+                      {customerUrl && (
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
+                      )}
+                    </div>
+                  </>
+                );
+                return customerUrl ? (
+                  <Link
+                    key={o.id}
+                    href={customerUrl}
+                    className="flex items-start justify-between rounded-[8px] bg-parchment/30 px-2 py-1.5 transition-colors hover:bg-parchment/60 cursor-pointer"
+                  >
+                    {inner}
+                  </Link>
+                ) : (
+                  <div
+                    key={o.id}
+                    className="flex items-start justify-between rounded-[8px] bg-parchment/30 px-2 py-1.5"
+                  >
+                    {inner}
                   </div>
                 );
               })}
@@ -419,20 +530,80 @@ export function IccidLookup() {
             </div>
           </LookupCard>
 
+          {/* eSIM Profile — install status, state history, device chip (EID) */}
+          <LookupCard
+            title="eSIM Profile"
+            icon={<History className="h-3.5 w-3.5 text-amethyst" />}
+            loading={smdpLoading}
+            error={smdpError}
+            empty={!smdp && !smdpLoading && !smdpError}
+            badge={
+              currentSmdpStatus || sortedHistory.length > 0
+                ? (() => {
+                    const lbl = getSmdpLabel(currentSmdpStatus || undefined);
+                    return { label: lbl.label, className: smdpBadgeClass(lbl.severity) };
+                  })()
+                : null
+            }
+          >
+            <div>
+              {eid && (
+                <KVRow
+                  label="EID"
+                  value={<span className="text-[10px] font-mono break-all">{eid}</span>}
+                />
+              )}
+              {sortedHistory.length > 0 ? (
+                <div className={eid ? "mt-2" : ""}>
+                  <ProfileHistoryTimeline events={sortedHistory} collapsedLimit={4} />
+                </div>
+              ) : (
+                <p className="text-[12px] font-[460] text-muted-foreground">
+                  No profile history — eSIM not yet downloaded to a device.
+                </p>
+              )}
+            </div>
+          </LookupCard>
+
+          {/* eSIM Activation — LPA string + QR code to share with the customer */}
+          <LookupCard
+            title="eSIM Activation"
+            icon={<QrCode className="h-3.5 w-3.5 text-amethyst" />}
+            loading={(subLoading || smdpLoading) && !lpa}
+            error={null}
+            empty={!lpa && !subLoading && !smdpLoading}
+          >
+            <LpaActivation
+              lpa={lpa}
+              plan={{
+                brand: resolveBrandName(ordData[0]?.order_number),
+                iccid: iccid.trim() || undefined,
+                planName: planName || undefined,
+                dataLabel: !isNaN(totalBytes) ? formatBytes(totalBytes) : undefined,
+                validityLabel: planDays > 0 ? `${planDays} days` : undefined,
+                countryLabel: planCountry
+                  ? ((covCountries.find((c) => String(c.iso2).toUpperCase() === planCountry.toUpperCase())?.name as string) || planCountry)
+                  : undefined,
+                activatedOn: activationDate || undefined,
+                expiresOn: expiryDate || undefined,
+              }}
+            />
+          </LookupCard>
+
           {/* Data Usage (full width) — chart + table */}
           <LookupCard
             title="Data Usage"
             icon={<Activity className="h-3.5 w-3.5 text-amethyst" />}
             loading={cdrLoading}
             error={cdrError}
-            empty={cdrRows.length === 0 && !cdrLoading && !cdrError}
+            empty={cdrRows.length === 0 && !cdrLoading && !cdrError && isNaN(usedBytes)}
             badge={cdrRows.length > 0 ? {
               label: `${formatBytes(cdrRows.reduce((sum, r) => sum + Number(r.TOTAL_QTY || r.total_qty || 0), 0))} total`,
               className: "bg-lavender/20 text-amethyst",
             } : null}
             fullWidth
           >
-            <IccidUsageChart data={cdrRows} />
+            <IccidUsageChart data={cdrRows} fallbackUsedBytes={usedBytes} />
           </LookupCard>
         </div>
       )}
@@ -441,7 +612,13 @@ export function IccidLookup() {
 }
 
 /** Daily usage chart + table for ICCID CDR data */
-function IccidUsageChart({ data }: { data: AnyRecord[] }) {
+function IccidUsageChart({
+  data,
+  fallbackUsedBytes,
+}: {
+  data: AnyRecord[];
+  fallbackUsedBytes?: number;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
@@ -460,7 +637,19 @@ function IccidUsageChart({ data }: { data: AnyRecord[] }) {
     .map(([date, v]) => ({ date, ...v }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  if (daily.length === 0) return <p className="text-[12px] font-[460] text-muted-foreground">No usage data</p>;
+  if (daily.length === 0) {
+    if (fallbackUsedBytes != null && !isNaN(fallbackUsedBytes) && fallbackUsedBytes > 0) {
+      return (
+        <p className="text-[12px] font-[460] text-muted-foreground">
+          TelliSIM reports{" "}
+          <span className="font-[600] text-charcoal">{formatBytes(fallbackUsedBytes)}</span>{" "}
+          consumed on this plan, but no per-day call records (CDRs) were found in the
+          activation window. The carrier may aggregate usage without emitting daily records.
+        </p>
+      );
+    }
+    return <p className="text-[12px] font-[460] text-muted-foreground">No usage data</p>;
+  }
 
   // Chart
   const W = 600, H = 160, padT = 16, padB = 8, padX = 8;
@@ -594,6 +783,158 @@ function IccidUsageChart({ data }: { data: AnyRecord[] }) {
             })}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+/** SMDP profile state-history timeline (newest first). */
+function ProfileHistoryTimeline({
+  events,
+  collapsedLimit,
+}: {
+  events: AnyRecord[];
+  collapsedLimit: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasMore = events.length > collapsedLimit;
+  const visible = expanded ? events : events.slice(0, collapsedLimit);
+
+  const iconMap = { success: CheckCircle2, info: Download, warning: WifiOff, error: XCircle };
+  const colorMap = { success: "text-success", info: "text-amethyst", warning: "text-fraud-yellow", error: "text-fraud-red" };
+  const bgMap = { success: "bg-success-soft", info: "bg-lavender/20", warning: "bg-fraud-yellow-soft", error: "bg-fraud-red-soft" };
+
+  return (
+    <div>
+      <div className="relative ml-1">
+        <div className="absolute left-[2px] top-2 bottom-2 w-px bg-parchment" />
+        <div className="space-y-3.5">
+          {visible.map((event, i) => {
+            const label = getSmdpLabel(String(event.state || "") || undefined);
+            const sev = label.severity;
+            const EventIcon = iconMap[sev];
+            return (
+              <div key={i} className="relative flex items-start gap-3 pl-5">
+                <div
+                  className={`absolute left-[-6px] top-0.5 flex h-[16px] w-[16px] items-center justify-center rounded-full border-2 border-background z-10 ${bgMap[sev]}`}
+                >
+                  <EventIcon className={`h-2.5 w-2.5 ${colorMap[sev]}`} strokeWidth={2.5} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-[600] text-charcoal leading-tight">{label.label}</p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <p className="text-[11px] font-[460] text-muted-foreground">
+                      {formatDateTime(String(event.modified_at || ""))}
+                    </p>
+                    {event.modification_result && (
+                      <span
+                        className={`rounded-full px-1.5 py-0 text-[10px] font-[500] ${
+                          String(event.modification_result) === "SUCCESS"
+                            ? "bg-success-soft text-success"
+                            : "bg-fraud-red-soft text-fraud-red"
+                        }`}
+                      >
+                        {String(event.modification_result)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {hasMore && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-3 ml-1 text-[12px] font-[540] text-amethyst hover:text-amethyst/80 transition-colors cursor-pointer"
+        >
+          {expanded
+            ? "Show less"
+            : `Show ${events.length - collapsedLimit} more event${
+                events.length - collapsedLimit !== 1 ? "s" : ""
+              }`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** LPA activation code with copy + downloadable QR for the customer to scan. */
+function LpaActivation({ lpa, plan }: { lpa: string; plan?: Omit<EsimPdfOptions, "qrDataUrl" | "lpa"> }) {
+  const [copied, setCopied] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const qrRef = useRef<HTMLDivElement>(null);
+
+  if (!lpa) {
+    return (
+      <p className="text-[12px] font-[460] text-muted-foreground">
+        No LPA activation code available for this eSIM.
+      </p>
+    );
+  }
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(lpa);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  const downloadPdf = async () => {
+    const canvas = qrRef.current?.querySelector("canvas");
+    if (!canvas) return;
+    setPdfBusy(true);
+    try {
+      const { generateEsimActivationPdf } = await import("@/lib/esim-pdf");
+      await generateEsimActivationPdf({ qrDataUrl: canvas.toDataURL("image/png"), lpa, ...plan });
+    } catch {
+      /* generation failed — on-screen QR/LPA still usable */
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      {/* QR — encodes the LPA activation string the customer scans on their phone */}
+      <div ref={qrRef} className="rounded-[16px] bg-white p-3 border border-border">
+        <QRCodeCanvas value={lpa} size={512} level="M" marginSize={4} style={{ width: 148, height: 148 }} />
+      </div>
+
+      <p className="flex items-center gap-1.5 text-[11px] font-[460] text-muted-foreground text-center">
+        <Smartphone className="h-3.5 w-3.5 shrink-0" />
+        Customer scans this from Settings → Cellular → Add eSIM
+      </p>
+
+      {/* LPA string (selectable, monospaced) */}
+      <div className="w-full rounded-[8px] bg-parchment/40 px-3 py-2">
+        <p className="text-[10px] font-[540] uppercase tracking-wide text-muted-foreground mb-1">
+          LPA Activation Code
+        </p>
+        <p className="text-[11px] font-mono break-all text-charcoal select-all">{lpa}</p>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2 w-full">
+        <Button
+          onClick={copy}
+          className="flex-1 h-9 rounded-[8px] bg-[#e9e5dd] text-charcoal font-[540] hover:bg-[#ddd8cf] gap-1.5"
+        >
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          {copied ? "Copied" : "Copy LPA"}
+        </Button>
+        <Button
+          onClick={downloadPdf}
+          disabled={pdfBusy}
+          className="flex-1 h-9 rounded-[8px] bg-[#e9e5dd] text-charcoal font-[540] hover:bg-[#ddd8cf] gap-1.5 disabled:opacity-60"
+        >
+          <Download className="h-4 w-4" />
+          {pdfBusy ? "Generating…" : "Download PDF"}
+        </Button>
       </div>
     </div>
   );

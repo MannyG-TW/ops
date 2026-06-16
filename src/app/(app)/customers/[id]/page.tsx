@@ -23,6 +23,7 @@ import {
   ChevronDown,
   ChevronUp,
   Smartphone,
+  QrCode,
   Globe,
   Wifi,
   WifiOff,
@@ -74,6 +75,9 @@ import { getCountryFlag } from "@/lib/country-flags";
 import { getCatalogPrice, getPlanCountries } from "@/lib/plan-catalog";
 import { getSystemName } from "@/lib/system-mapping";
 import { getSmdpLabel, getPlanStateLabel } from "@/lib/smdp-labels";
+import { QRCodeCanvas } from "qrcode.react";
+import type { EsimPdfOptions } from "@/lib/esim-pdf";
+import { resolveBrandName } from "@/lib/brands";
 import { getCurrentRole, hasPermission } from "@/lib/roles";
 
 /* ─── Types ─── */
@@ -474,6 +478,83 @@ function ProfileHistoryTimeline({ events, collapsedLimit }: { events: SmdpState[
   );
 }
 
+/** LPA activation code + scannable QR to (re)share with the customer for install issues. */
+function LpaQrShare({ lpa, plan }: { lpa: string; plan?: Omit<EsimPdfOptions, "qrDataUrl" | "lpa"> }) {
+  const [copied, setCopied] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const qrRef = useRef<HTMLDivElement>(null);
+  if (!lpa) return null;
+
+  const copyLpa = async () => {
+    try {
+      await navigator.clipboard.writeText(lpa);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  const downloadPdf = async () => {
+    const canvas = qrRef.current?.querySelector("canvas");
+    if (!canvas) return;
+    setPdfBusy(true);
+    try {
+      const { generateEsimActivationPdf } = await import("@/lib/esim-pdf");
+      await generateEsimActivationPdf({ qrDataUrl: canvas.toDataURL("image/png"), lpa, ...plan });
+    } catch {
+      /* generation failed — on-screen QR/LPA still usable */
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-border">
+      <div className="flex items-center gap-2 mb-3">
+        <QrCode className="h-3.5 w-3.5 text-amethyst" strokeWidth={1.8} />
+        <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/70">
+          eSIM Activation (LPA / QR)
+        </p>
+      </div>
+      <div className="flex flex-col sm:flex-row gap-4 items-start">
+        <div ref={qrRef} className="rounded-[16px] bg-white p-3 border border-border shrink-0">
+          <QRCodeCanvas value={lpa} size={512} level="M" marginSize={4} style={{ width: 132, height: 132 }} />
+        </div>
+        <div className="flex-1 min-w-0 w-full">
+          <p className="flex items-center gap-1.5 text-[11px] font-[460] text-muted-foreground mb-2">
+            <Smartphone className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+            Customer scans this from Settings → Cellular → Add eSIM
+          </p>
+          <div className="rounded-[8px] bg-muted/40 px-3 py-2 mb-2">
+            <p className="text-[10px] font-[600] uppercase tracking-wide text-muted-foreground mb-1">
+              LPA Activation Code
+            </p>
+            <p className="text-[11px] font-mono break-all text-foreground select-all">{lpa}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={copyLpa}
+              className="h-8 rounded-[8px] bg-[#e9e5dd] text-charcoal text-[12px] font-[540] hover:bg-[#ddd8cf] gap-1.5 px-3"
+            >
+              {copied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? "Copied" : "Copy LPA"}
+            </Button>
+            <Button
+              onClick={downloadPdf}
+              disabled={pdfBusy}
+              className="h-8 rounded-[8px] bg-[#e9e5dd] text-charcoal text-[12px] font-[540] hover:bg-[#ddd8cf] gap-1.5 px-3 disabled:opacity-60"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {pdfBusy ? "Generating…" : "Download PDF"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Page ─── */
 export default function CustomerProfilePage() {
   const params = useParams();
@@ -491,6 +572,7 @@ export default function CustomerProfilePage() {
   const [serviceLoading, setServiceLoading] = useState(false);
   const [planAttachments, setPlanAttachments] = useState<PlanAttachment[]>([]);
   const [smdpData, setSmdpData] = useState<SmdpData | null>(null);
+  const [lpa, setLpa] = useState<string>("");
   const [cdrRecords, setCdrRecords] = useState<Array<Record<string, unknown>>>([]);
   const [cdrTotal, setCdrTotal] = useState(0);
   const [cdrError, setCdrError] = useState<string | null>(null);
@@ -529,6 +611,7 @@ export default function CustomerProfilePage() {
     userOffers: Array<Record<string, unknown>>;
     planAttachments: PlanAttachment[];
     smdpData: SmdpData | null;
+    lpa: string;
     locationData: LocationOperator | null;
     iccidOrders: Order[];
     terminalStatus: Record<string, unknown> | null;
@@ -638,6 +721,7 @@ export default function CustomerProfilePage() {
       setUserOffers(cached.userOffers);
       setPlanAttachments(cached.planAttachments);
       setSmdpData(cached.smdpData);
+      setLpa(cached.lpa);
       setLocationData(cached.locationData);
       setIccidOrders(cached.iccidOrders);
       setTerminalStatus(cached.terminalStatus);
@@ -728,6 +812,7 @@ export default function CustomerProfilePage() {
       userOffers: [] as Array<Record<string, unknown>>,
       planAttachments: [] as PlanAttachment[],
       smdpData: null as SmdpData | null,
+      lpa: "" as string,
       locationData: null as LocationOperator | null,
       iccidOrders: [] as Order[],
       terminalStatus: null as Record<string, unknown> | null,
@@ -815,8 +900,19 @@ export default function CustomerProfilePage() {
         if (planRes.status === "fulfilled" && planRes.value.ok) {
           const att = (planRes.value.planAttachments as { data?: PlanAttachment[] })?.data || planRes.value.planAttachments || [];
           out.planAttachments = Array.isArray(att) ? att : [];
+          // LPA activation code lives at subscription.data.esim.lpastring (API wraps payload in `data`)
+          const subEsim = (planRes.value as { subscription?: { data?: { esim?: { lpastring?: string } }; esim?: { lpastring?: string } } }).subscription;
+          const subLpa = subEsim?.data?.esim?.lpastring || subEsim?.esim?.lpastring || "";
+          if (subLpa) out.lpa = subLpa;
         }
-        if (smdpRes.status === "fulfilled" && smdpRes.value.ok) out.smdpData = smdpRes.value.smdp || null;
+        if (smdpRes.status === "fulfilled" && smdpRes.value.ok) {
+          out.smdpData = smdpRes.value.smdp || null;
+          // Fallback LPA from SIM details (the smdp route also returns `sim`)
+          if (!out.lpa) {
+            const simLpa = (smdpRes.value as { sim?: { lpa?: string } }).sim?.lpa || "";
+            if (simLpa) out.lpa = simLpa;
+          }
+        }
         if (cdrRes.status === "fulfilled") {
           const cdrVal = cdrRes.value as Record<string, unknown>;
           if (cdrVal.ok) {
@@ -858,6 +954,7 @@ export default function CustomerProfilePage() {
       setUserOffers(out.userOffers);
       setPlanAttachments(out.planAttachments);
       setSmdpData(out.smdpData);
+      setLpa(out.lpa);
       setLocationData(out.locationData);
       setIccidOrders(out.iccidOrders);
       setTerminalStatus(out.terminalStatus);
@@ -1889,6 +1986,28 @@ export default function CustomerProfilePage() {
                           )}
                         </>
                       )}
+
+                      {/* eSIM Activation (LPA / QR) — always available to re-share with the customer */}
+                      <LpaQrShare
+                        lpa={lpa}
+                        plan={{
+                          brand: resolveBrandName(selectedOrder?.system || selectedOrder?.order_number || targetOrderNumber),
+                          iccid: selectedSerial || undefined,
+                          planName: currentPlan?.plan?.name || currentPlan?.plan?.label || undefined,
+                          dataLabel:
+                            currentPlan?.plan?.data_mega_bytes != null
+                              ? mbToDisplay(currentPlan.plan.data_mega_bytes)
+                              : undefined,
+                          validityLabel: currentPlan?.plan?.period_days
+                            ? `${currentPlan.plan.period_days} days`
+                            : undefined,
+                          countryLabel: currentPlan?.plan?.region_code
+                            ? getCountryName(currentPlan.plan.region_code)
+                            : undefined,
+                          activatedOn: currentPlan?.activation_at || undefined,
+                          expiresOn: currentPlan?.expiration_at || undefined,
+                        }}
+                      />
                     </CardContent>
                   </Card>
                 );
@@ -2611,7 +2730,7 @@ export default function CustomerProfilePage() {
       {/* ─── Actions Info Modal ─── */}
       {actionsInfoOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setActionsInfoOpen(false)}>
-          <Card className="rounded-[16px] w-full max-w-lg mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <Card className="rounded-[16px] w-full max-w-2xl mx-4 shadow-xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <CardHeader className="pb-2">
               <CardTitle className="text-[16px] font-[600] text-foreground flex items-center gap-2">
                 <HelpCircle className="h-5 w-5 text-amethyst" strokeWidth={2} />
@@ -2621,68 +2740,94 @@ export default function CustomerProfilePage() {
                 Available actions depend on the product type for this order.
               </p>
             </CardHeader>
-            <CardContent className="space-y-3 pb-5">
-              <div className="rounded-[8px] bg-lavender/10 border border-lavender/20 px-4 py-3">
-                <p className="text-[11px] font-[700] uppercase tracking-wider text-amethyst/60 mb-2">eSIM Only (TelliSIM)</p>
-                <div className="space-y-2.5">
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-fraud-yellow-soft mt-0.5">
-                      <Pause className="h-3 w-3 text-fraud-yellow" strokeWidth={2} />
+            <CardContent className="pb-5 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-[8px] bg-lavender/10 border border-lavender/20 px-4 py-3">
+                  <p className="text-[11px] font-[700] uppercase tracking-wider text-amethyst/60 mb-2">eSIM Only (TelliSIM)</p>
+                  <div className="space-y-2.5">
+                    <div className="flex items-start gap-2">
+                      <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-fraud-yellow-soft mt-0.5 shrink-0">
+                        <Pause className="h-3 w-3 text-fraud-yellow" strokeWidth={2} />
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-[600] text-foreground leading-tight">Pause <Badge className="ml-1 rounded-[6px] text-[9px] font-[600] bg-fraud-yellow-soft text-fraud-yellow border-0 px-1 py-0 align-middle">Soon</Badge></p>
+                        <p className="text-[11px] font-[460] text-muted-foreground leading-snug">Temporarily disable the eSIM profile. Can be re-enabled later.</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[13px] font-[600] text-foreground">Pause</p>
-                      <p className="text-[11px] font-[460] text-muted-foreground">Temporarily disable the eSIM profile via TelliSIM. The profile can be re-enabled later. Use when a customer needs a temporary hold on service.</p>
-                      <Badge className="mt-1 rounded-[6px] text-[10px] font-[600] bg-fraud-yellow-soft text-fraud-yellow border-0 px-1.5 py-0">Coming soon</Badge>
+                    <div className="flex items-start gap-2">
+                      <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-fraud-red-soft mt-0.5 shrink-0">
+                        <ShieldBan className="h-3 w-3 text-fraud-red" strokeWidth={2} />
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-[600] text-foreground leading-tight">Block <Badge className="ml-1 rounded-[6px] text-[9px] font-[600] bg-fraud-yellow-soft text-fraud-yellow border-0 px-1 py-0 align-middle">Soon</Badge></p>
+                        <p className="text-[11px] font-[460] text-muted-foreground leading-snug">Permanently block the SIM. Irreversible — for confirmed abuse or stolen devices.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-cream mt-0.5 shrink-0">
+                        <Send className="h-3 w-3 text-charcoal" strokeWidth={2} />
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-[600] text-foreground leading-tight">Resend <Badge className="ml-1 rounded-[6px] text-[9px] font-[600] bg-fraud-yellow-soft text-fraud-yellow border-0 px-1 py-0 align-middle">Soon</Badge></p>
+                        <p className="text-[11px] font-[460] text-muted-foreground leading-snug">Resend eSIM QR code and activation instructions to the customer.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-fraud-yellow-soft mt-0.5 shrink-0">
+                        <Signal className="h-3 w-3 text-fraud-yellow" strokeWidth={2} />
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-[600] text-foreground leading-tight">Connectivity</p>
+                        <p className="text-[11px] font-[460] text-muted-foreground leading-snug">Report a connectivity issue. Captures TelliSIM diagnostics — signal, location, operator.</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-fraud-red-soft mt-0.5">
-                      <ShieldBan className="h-3 w-3 text-fraud-red" strokeWidth={2} />
+                </div>
+
+                <div className="rounded-[8px] bg-muted/30 border border-border/50 px-4 py-3">
+                  <p className="text-[11px] font-[700] uppercase tracking-wider text-muted-foreground/60 mb-2">All Products</p>
+                  <div className="space-y-2.5">
+                    <div className="flex items-start gap-2">
+                      <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-fraud-red-soft mt-0.5 shrink-0">
+                        <XCircle className="h-3 w-3 text-fraud-red" strokeWidth={2} />
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-[600] text-foreground leading-tight">Cancel</p>
+                        <p className="text-[11px] font-[460] text-muted-foreground leading-snug">Cancel this order with a reason and notes. For duplicates, customer requests, or unfulfillable orders.</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[13px] font-[600] text-foreground">Block</p>
-                      <p className="text-[11px] font-[460] text-muted-foreground">Permanently block the SIM via TelliSIM. This is irreversible — the SIM cannot be reactivated. Use for confirmed abuse or stolen devices.</p>
-                      <Badge className="mt-1 rounded-[6px] text-[10px] font-[600] bg-fraud-yellow-soft text-fraud-yellow border-0 px-1.5 py-0">Coming soon</Badge>
+                    <div className="flex items-start gap-2">
+                      <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-lavender/20 mt-0.5 shrink-0">
+                        <DollarSign className="h-3 w-3 text-amethyst" strokeWidth={2} />
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-[600] text-foreground leading-tight">Refund</p>
+                        <p className="text-[11px] font-[460] text-muted-foreground leading-snug">Process a full or partial refund. For service issues, cancellations, or overcharges.</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-cream mt-0.5">
-                      <Send className="h-3 w-3 text-charcoal" strokeWidth={2} />
+                    <div className="flex items-start gap-2">
+                      <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-lavender/20 mt-0.5 shrink-0">
+                        <ArrowUpRight className="h-3 w-3 text-amethyst" strokeWidth={2} />
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-[600] text-foreground leading-tight">Escalate</p>
+                        <p className="text-[11px] font-[460] text-muted-foreground leading-snug">Notify supervisors and managers with your note. For complex issues needing attention.</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[13px] font-[600] text-foreground">Resend</p>
-                      <p className="text-[11px] font-[460] text-muted-foreground">Resend the eSIM QR code and activation instructions to the customer. Use when the customer lost or didn&apos;t receive the original email.</p>
-                      <Badge className="mt-1 rounded-[6px] text-[10px] font-[600] bg-fraud-yellow-soft text-fraud-yellow border-0 px-1.5 py-0">Coming soon</Badge>
+                    <div className="flex items-start gap-2">
+                      <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-fraud-red-soft mt-0.5 shrink-0">
+                        <Flag className="h-3 w-3 text-fraud-red" strokeWidth={2} />
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-[600] text-foreground leading-tight">Fraud</p>
+                        <p className="text-[11px] font-[460] text-muted-foreground leading-snug">Flag for fraud investigation. All supervisors and managers notified immediately.</p>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-[8px] bg-muted/30 border border-border/50 px-4 py-3">
-                <p className="text-[11px] font-[700] uppercase tracking-wider text-muted-foreground/60 mb-2">All Products</p>
-                <div className="space-y-2.5">
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-lavender/20 mt-0.5">
-                      <ArrowUpRight className="h-3 w-3 text-amethyst" strokeWidth={2} />
-                    </div>
-                    <div>
-                      <p className="text-[13px] font-[600] text-foreground">Escalate</p>
-                      <p className="text-[11px] font-[460] text-muted-foreground">Escalate this case to supervisors and managers. A notification is sent to the team with your note explaining the issue. Use for complex issues that need supervisor attention.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex items-center justify-center h-5 w-5 rounded-[6px] bg-fraud-red-soft mt-0.5">
-                      <Flag className="h-3 w-3 text-fraud-red" strokeWidth={2} />
-                    </div>
-                    <div>
-                      <p className="text-[13px] font-[600] text-foreground">Fraud</p>
-                      <p className="text-[11px] font-[460] text-muted-foreground">Flag this order for fraud investigation. All supervisors and managers are notified immediately. Use when you suspect fraudulent activity on the order.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-1">
+              <div className="flex justify-end pt-3">
                 <Button onClick={() => setActionsInfoOpen(false)} className="rounded-[8px] bg-cream text-charcoal text-[13px] font-[600] hover:bg-cream-hover cursor-pointer">
                   Got it
                 </Button>
@@ -2810,6 +2955,7 @@ export default function CustomerProfilePage() {
         iccid={selectedSerial || ""}
         agentName={TEAM_MEMBERS.find((m) => m.email === (typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") : ""))?.name || "Agent"}
         agentId={typeof window !== "undefined" ? localStorage.getItem("travelwifi_ops_user_email") || "" : ""}
+        planSku={livePlanName || packageSku || planSku || undefined}
       />
 
       {/* ─── 6. INTERNAL NOTES ─── */}
