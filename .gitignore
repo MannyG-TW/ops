@@ -54,3 +54,14 @@ next-env.d.ts
 
 # scratch dir — holds PII marketing exports, never commit
 /delme/
+
+# local SQLite database — holds provider credentials, never commit
+*.sqlite
+*.sqlite3
+
+# service-account credentials (UCL SaaS portal)
+docs/UCL_WEB_ACCOUNTS.md
+
+# local agent state
+/.claude/
+/.remember/
