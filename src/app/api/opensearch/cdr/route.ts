@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryOS } from "@/lib/opensearch-client";
+import { resolveOpenSearchCredentials } from "@/lib/server-credentials";
 import {
   INDEX_CDR_TELLISIM,
   INDEX_CDR_UCL,
@@ -11,13 +12,13 @@ import {
  * Get CDR data for an ICCID or IMEI.
  * Queries the correct index based on product type:
  *   - TelliSIM eSIM → tellisim-cdr-read (ICCID, TOTAL_QTY, USAGE_DATE_UTC)
- *   - MANX eSIM → esim-archive-cdr_* (SubscriberReference, Narrative, ConnectTime)
+ *   - MANX/VFNL eSIM → esim-archive-cdr_* (SubscriberReference, Narrative, ConnectTime)
  *   - Rental/Sapphire → ucl-sim-cdr-* (IMEI-based)
  *
  * POST body: {
  *   iccid?: string,
  *   imei?: string,
- *   productSku?: string,  // e.g. "TW_eSIM_Tellisim" or "TW_eSIM_MANX"
+ *   productSku?: string,  // e.g. "TW_eSIM_Tellisim", "TW_eSIM_MANX", or "TW_eSIM_VFNL"
  *   credentials: { url, username, password },
  *   size?: number,
  *   from?: string (ISO date),
@@ -26,17 +27,19 @@ import {
  */
 export async function POST(req: NextRequest) {
   try {
-    const { iccid, imei, productSku, credentials, size = 500, from, to } = await req.json();
-
+    const body = await req.json();
+    const { iccid, imei, productSku, size = 500, from, to } = body;
+    const credentials = resolveOpenSearchCredentials(body);
     if (!credentials?.url) {
-      return NextResponse.json({ ok: false, error: "Credentials required" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "OpenSearch not configured — save credentials in Settings" }, { status: 400 });
     }
 
     if (!iccid && !imei) {
       return NextResponse.json({ ok: false, error: "ICCID or IMEI required" }, { status: 400 });
     }
 
-    const isManx = productSku?.toUpperCase()?.includes("MANX");
+    const skuUpper = productSku?.toUpperCase() || "";
+    const isLegacyEsim = skuUpper.includes("MANX") || skuUpper.includes("VFNL");
     const results: Record<string, unknown> = {};
 
     // USAGE_DATE_UTC format is yyyy-MM-dd'T'HH:mm:ss (no timezone, no millis)
@@ -45,7 +48,7 @@ export async function POST(req: NextRequest) {
     const cleanTo = cleanDate(to);
 
     // ─── TelliSIM CDR (standard eSIM) ───
-    if (iccid && !isManx) {
+    if (iccid && !isLegacyEsim) {
       try {
         const query: Record<string, unknown> = {
           size,
@@ -90,8 +93,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ─── MANX/Archive CDR (legacy eSIM) ───
-    if (iccid && isManx) {
+    // ─── MANX/VFNL Archive CDR (legacy eSIM) ───
+    if (iccid && isLegacyEsim) {
       try {
         const query: Record<string, unknown> = {
           size,
@@ -101,7 +104,7 @@ export async function POST(req: NextRequest) {
               ...(from || to ? {
                 filter: [{
                   range: {
-                    ConnectTime: {
+                    "ConnectTime.keyword": {
                       ...(from ? { gte: from.split("T")[0] } : {}),
                       ...(to ? { lte: to.split("T")[0] } : {}),
                     },
@@ -110,11 +113,11 @@ export async function POST(req: NextRequest) {
               } : {}),
             },
           },
-          sort: [{ ConnectTime: { order: "desc" } }],
+          sort: [{ "ConnectTime.keyword": { order: "desc" } }],
           _source: ["SubscriberReference", "ConnectTime", "Narrative", "@timestamp"],
         };
 
-        const result = await queryOS(credentials, INDEX_CDR_ESIM_ARCHIVE, query);
+        const result = await queryOS(credentials, INDEX_CDR_ESIM_ARCHIVE, query, { ignore_unavailable: "true", allow_no_indices: "true" });
         const records = (result.hits?.hits || []).map((h: Record<string, unknown>) => {
           const src = h._source as Record<string, unknown>;
           // Parse Narrative to extract MB: "Data: 1.23 MB used"
@@ -141,13 +144,13 @@ export async function POST(req: NextRequest) {
           records,
           source: "esim-archive-cdr",
         };
-      } catch {
-        results.tellisim = { total: 0, records: [], error: "Archive CDR index not available" };
+      } catch (e) {
+        results.tellisim = { total: 0, records: [], error: `Archive CDR error: ${(e as Error).message}` };
       }
     }
 
-    // ─── Also try TelliSIM CDR for MANX as fallback ───
-    if (iccid && isManx) {
+    // ─── Also try TelliSIM CDR for legacy eSIM as fallback ───
+    if (iccid && isLegacyEsim) {
       try {
         const query: Record<string, unknown> = {
           size: 10,
@@ -167,40 +170,51 @@ export async function POST(req: NextRequest) {
       } catch { /* ignore fallback failure */ }
     }
 
-    // ─── UCL CDR (Rental/Sapphire by IMEI) ───
+    // ─── Device CDR (Rental/Sapphire by IMEI) ───
+    // Primary index is `logstash-cdr*` with `imei.keyword` + `flowsize` (proven pattern from
+    // the BWifi usage analyzer). Fall back to `ucl-sim-cdr-*` if nothing is found, since a
+    // handful of older records may still live there.
     if (imei) {
-      try {
-        const query: Record<string, unknown> = {
-          size,
-          query: {
-            bool: {
-              must: [{
-                bool: {
-                  should: [
-                    { match: { user_code: imei } },
-                    { term: { "imei.keyword": imei } },
-                  ],
-                  minimum_should_match: 1,
-                },
-              }],
-              ...(from || to ? {
-                filter: [{ range: { "@timestamp": { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } }],
-              } : {}),
-            },
+      const imeiQuery = (index: string) => queryOS(credentials, index, {
+        size,
+        query: {
+          bool: {
+            must: [{ term: { "imei.keyword": imei } }],
+            ...(from || to ? {
+              filter: [{ range: { "@timestamp": { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } }],
+            } : {}),
           },
-          sort: [{ "@timestamp": { order: "desc" } }],
-        };
+        },
+        sort: [{ "@timestamp": { order: "desc" } }],
+      }, { ignore_unavailable: "true", allow_no_indices: "true" });
 
-        const result = await queryOS(credentials, INDEX_CDR_UCL, query);
-        results.ucl = {
-          total: result.hits?.total?.value || 0,
-          records: (result.hits?.hits || []).map((h: Record<string, unknown>) => ({
-            id: h._id,
-            ...h._source as Record<string, unknown>,
-          })),
-        };
-      } catch {
-        results.ucl = { total: 0, records: [], error: "UCL CDR index not available" };
+      try {
+        const primary = await imeiQuery("logstash-cdr*");
+        const primaryTotal = primary.hits?.total?.value || 0;
+        let records = (primary.hits?.hits || []).map((h: Record<string, unknown>) => {
+          const src = h._source as Record<string, unknown>;
+          // Normalise field names so the UI's aggregator finds bytes
+          const bytes = Number(src.flowsize || src.TOTAL_QTY || src.data_volume || 0);
+          return { id: h._id, ...src, TOTAL_QTY: bytes, USAGE_DATE_UTC: src["@timestamp"] || src.USAGE_DATE_UTC };
+        });
+        let total = primaryTotal;
+
+        if (total === 0) {
+          // Legacy fallback
+          try {
+            const legacy = await imeiQuery(INDEX_CDR_UCL);
+            total = legacy.hits?.total?.value || 0;
+            records = (legacy.hits?.hits || []).map((h: Record<string, unknown>) => {
+              const src = h._source as Record<string, unknown>;
+              const bytes = Number(src.flowsize || src.TOTAL_QTY || src.data_volume || 0);
+              return { id: h._id, ...src, TOTAL_QTY: bytes, USAGE_DATE_UTC: src["@timestamp"] || src.USAGE_DATE_UTC };
+            });
+          } catch { /* ignore */ }
+        }
+
+        results.ucl = { total, records, index: total > 0 && primaryTotal > 0 ? "logstash-cdr*" : INDEX_CDR_UCL };
+      } catch (e) {
+        results.ucl = { total: 0, records: [], error: `Device CDR error: ${(e as Error).message}` };
       }
     }
 

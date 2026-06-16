@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryOS } from "@/lib/opensearch-client";
+import { resolveOpenSearchCredentials } from "@/lib/server-credentials";
 import { INDEX_ORDERS } from "@/lib/opensearch-indices";
 
 /**
@@ -8,13 +9,19 @@ import { INDEX_ORDERS } from "@/lib/opensearch-indices";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { query, credentials, size = 20 } = await req.json();
-
-    if (!query || !credentials?.url) {
-      return NextResponse.json({ ok: false, error: "Query and credentials required" }, { status: 400 });
+    const body = await req.json();
+    const { query, size = 20 } = body;
+    const credentials = resolveOpenSearchCredentials(body);
+    if (!query) {
+      return NextResponse.json({ ok: false, error: "query required" }, { status: 400 });
+    }
+    if (!credentials?.url) {
+      return NextResponse.json({ ok: false, error: "OpenSearch not configured — save credentials in Settings" }, { status: 400 });
     }
 
-    const trimmed = query.trim();
+    // Strip whitespace and trailing punctuation (commas, periods, semicolons)
+    // that users accidentally paste from spreadsheets or ticket lists
+    const trimmed = query.trim().replace(/[,;.\s]+$/, "");
 
     const sourceFields = [
       "order_number", "customer_email", "customer_first_name", "customer_last_name",
@@ -71,6 +78,18 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── Phase 2: Broader search (wildcard + text match) ───
+    // Suppress broad search when the query is a specific identifier that should
+    // only match exactly:
+    // - Order numbers (TWUS-271657, QRO-4473): if not in the index, "not found"
+    //   is correct — broad search returns false positives from unrelated orders.
+    // - ICCID-length numeric queries (≥15 digits): avoid false positives from
+    //   shared carrier prefixes (e.g., 89480100...).
+    const suppressBroad = isOrderNumber || (isNumericOnly && trimmed.length >= 15);
+
+    if (suppressBroad) {
+      return NextResponse.json({ ok: true, total: 0, results: [] });
+    }
+
     const broadBody = {
       size,
       query: {

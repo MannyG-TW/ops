@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryOS } from "@/lib/opensearch-client";
+import { resolveOpenSearchCredentials } from "@/lib/server-credentials";
 
 /**
  * Generate BWifi usage report from logstash-cdr* indices.
@@ -137,10 +138,12 @@ async function queryBatch(
 
 export async function POST(req: NextRequest) {
   try {
-    const { imeis, from, to, noonToNoon = true, credentials } = await req.json();
+    const body = await req.json();
+    const { imeis, from, to, noonToNoon = true } = body;
+    const credentials = resolveOpenSearchCredentials(body);
 
     if (!credentials?.url) {
-      return NextResponse.json({ ok: false, error: "Credentials required" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "OpenSearch not configured — save credentials in Settings" }, { status: 400 });
     }
     if (!imeis || !Array.isArray(imeis) || imeis.length === 0) {
       return NextResponse.json({ ok: false, error: "IMEIs array required" }, { status: 400 });

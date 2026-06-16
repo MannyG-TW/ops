@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSubscription, getPlanAttachments } from "@/lib/tellisim-client";
+import { resolveTelliSIMCredentials } from "@/lib/server-credentials";
 
 /**
  * Get TelliSIM subscription + plan attachments for an ICCID.
- * POST body: { credentials: { baseUrl, apiKey, orgId? } }
  */
 export async function POST(
   req: NextRequest,
@@ -11,10 +11,11 @@ export async function POST(
 ) {
   try {
     const { iccid } = await params;
-    const { credentials } = await req.json();
+    const body = await req.json();
+    const credentials = resolveTelliSIMCredentials(body);
 
     if (!credentials?.apiKey) {
-      return NextResponse.json({ ok: false, error: "TelliSIM credentials required" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "TelliSIM credentials not configured" }, { status: 400 });
     }
 
     // Fetch subscription and plan attachments in parallel

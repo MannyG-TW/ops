@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { suspendPlanAttachment } from "@/lib/tellisim-client";
+import { resolveTelliSIMCredentials } from "@/lib/server-credentials";
 import { hasPermission } from "@/lib/roles";
 import type { UserRole } from "@/lib/roles";
 
 /**
  * Suspend a plan attachment (NON-REVERSIBLE).
- * POST body: { credentials: { baseUrl, apiKey }, role: UserRole }
  */
 export async function POST(
   req: NextRequest,
@@ -13,11 +13,13 @@ export async function POST(
 ) {
   try {
     const { iccid, planAttachmentId } = await params;
-    const { credentials, role } = await req.json();
+    const body = await req.json();
+    const credentials = resolveTelliSIMCredentials(body);
+    const role = body.role;
 
     if (!credentials?.apiKey) {
       return NextResponse.json(
-        { ok: false, error: "API credentials required" },
+        { ok: false, error: "TelliSIM credentials not configured" },
         { status: 400 }
       );
     }

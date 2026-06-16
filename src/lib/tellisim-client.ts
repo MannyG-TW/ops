@@ -151,6 +151,22 @@ export async function getSmdpInfo(creds: TelliSIMCredentials, iccid: string) {
 }
 
 /**
+ * List SIMs with optional filters and pagination.
+ * GET /v3/sims
+ */
+export async function listSims(
+  creds: TelliSIMCredentials,
+  params: { pageSize?: number; page?: string; isEsim?: boolean } = {}
+) {
+  const query = new URLSearchParams();
+  if (params.pageSize) query.set("page_size", String(params.pageSize));
+  if (params.page) query.set("page", params.page);
+  if (params.isEsim !== undefined) query.set("is_esim", String(params.isEsim));
+  const qs = query.toString();
+  return telliSIMFetch(creds, `/v3/sims${qs ? `?${qs}` : ""}`);
+}
+
+/**
  * Suspend a plan attachment (NON-REVERSIBLE).
  * POST /v3/subscriptions/{iccid}/plan-attachments/{planAttachmentId}/suspend
  */

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendSMS } from "@/lib/tellisim-client";
+import { resolveTelliSIMCredentials } from "@/lib/server-credentials";
 import { hasPermission } from "@/lib/roles";
 import type { UserRole } from "@/lib/roles";
 
 /**
  * Send SMS to a subscription.
- * POST body: { credentials: { baseUrl, apiKey }, role: UserRole, from: string, message: string }
  */
 export async function POST(
   req: NextRequest,
@@ -13,11 +13,13 @@ export async function POST(
 ) {
   try {
     const { iccid } = await params;
-    const { credentials, role, from, message } = await req.json();
+    const body = await req.json();
+    const credentials = resolveTelliSIMCredentials(body);
+    const { role, from, message } = body;
 
     if (!credentials?.apiKey) {
       return NextResponse.json(
-        { ok: false, error: "API credentials required" },
+        { ok: false, error: "TelliSIM credentials not configured" },
         { status: 400 }
       );
     }

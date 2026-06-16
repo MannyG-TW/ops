@@ -53,6 +53,8 @@ interface UclGlobalConfig {
   clientId: string;
   clientSecret: string;
   mvnoCode: string;
+  portalUsername: string;
+  portalPassword: string;
 }
 
 interface TestStep {
@@ -62,13 +64,17 @@ interface TestStep {
 }
 
 /* ─── Main Component ─── */
-export function UclOrgsSection() {
+export type UclView = "credentials" | "orgs" | "all";
+
+export function UclOrgsSection({ view = "all" }: { view?: UclView } = {}) {
   const [orgs, setOrgs] = useState<UclOrg[]>([]);
   const [config, setConfig] = useState<UclGlobalConfig>({
     partnerCode: "",
     clientId: "",
     clientSecret: "",
     mvnoCode: "",
+    portalUsername: "",
+    portalPassword: "",
   });
   const [configSaved, setConfigSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -82,8 +88,8 @@ export function UclOrgsSection() {
   const [deleteOrg, setDeleteOrg] = useState<UclOrg | null>(null);
   const [testOrg, setTestOrg] = useState<UclOrg | null>(null);
 
-  // Config expand
-  const [configExpanded, setConfigExpanded] = useState(false);
+  // Config expand — auto-expand when this is the only card shown
+  const [configExpanded, setConfigExpanded] = useState(view === "credentials");
 
   // Test All state
   const [testAllRunning, setTestAllRunning] = useState(false);
@@ -114,6 +120,8 @@ export function UclOrgsSection() {
           clientId: data.config.clientId || "",
           clientSecret: data.config.clientSecret || "",
           mvnoCode: data.config.mvnoCode || "",
+          portalUsername: data.config.portalUsername || "",
+          portalPassword: data.config.portalPassword || "",
         });
       }
     } catch {
@@ -230,9 +238,13 @@ export function UclOrgsSection() {
     );
   }
 
+  const showCredentials = view === "all" || view === "credentials";
+  const showOrgs = view === "all" || view === "orgs";
+
   return (
     <>
-      {/* ─── Global Config (collapsible) ─── */}
+      {showCredentials && (
+      /* ─── Global Config (collapsible) ─── */
       <Card className="rounded-[16px]">
         <CardHeader className="border-b border-border">
           <div className="flex items-center justify-between">
@@ -363,18 +375,65 @@ export function UclOrgsSection() {
               </div>
             </div>
 
+            <Separator />
+
+            <p className="text-[11px] font-[600] uppercase tracking-wider text-muted-foreground/60">SaaS Portal (Terminal Monitor)</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-[13px] font-[600] text-foreground">
+                  Portal Username
+                </Label>
+                <Input
+                  value={config.portalUsername}
+                  onChange={(e) =>
+                    setConfig((c) => ({ ...c, portalUsername: e.target.value }))
+                  }
+                  placeholder="e.g. Admin_user"
+                  className="mt-1.5 rounded-[8px] font-mono text-[13px]"
+                />
+              </div>
+              <div>
+                <Label className="text-[13px] font-[600] text-foreground">
+                  Portal Password
+                </Label>
+                <div className="relative mt-1.5">
+                  <Input
+                    type={revealedConfigFields.has("portalPassword") ? "text" : "password"}
+                    value={config.portalPassword}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, portalPassword: e.target.value }))
+                    }
+                    placeholder="Portal password"
+                    className="rounded-[8px] pr-10 font-mono text-[13px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleConfigField("portalPassword")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    {revealedConfigFields.has("portalPassword") ? (
+                      <EyeOff className="h-4 w-4" strokeWidth={1.8} />
+                    ) : (
+                      <Eye className="h-4 w-4" strokeWidth={1.8} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div className="rounded-[8px] bg-muted/50 border border-border px-4 py-3">
               <p className="text-[12px] font-[460] text-muted-foreground leading-relaxed">
-                These values are provided by uCloudlink during integration setup.
-                They are used for all org logins via the GrpUserLogin endpoint.
-                The access token is valid for 8 hours per session.
+                API credentials (above) are used for org logins via GrpUserLogin.
+                Portal credentials are used for the SaaS terminal monitor (real-time device status, MCC/MNC, RAT).
               </p>
             </div>
           </CardContent>
         )}
       </Card>
+      )}
 
-      {/* ─── Org List ─── */}
+      {showOrgs && (
+      /* ─── Org List ─── */
       <Card className="rounded-[16px]">
         <CardHeader className="border-b border-border">
           <div className="flex items-center justify-between">
@@ -587,6 +646,7 @@ export function UclOrgsSection() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* ─── Modals ─── */}
       {showAddModal && (

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryOS } from "@/lib/opensearch-client";
+import { resolveOpenSearchCredentials } from "@/lib/server-credentials";
 import { INDEX_ORDERS } from "@/lib/opensearch-indices";
 
 /**
@@ -8,10 +9,14 @@ import { INDEX_ORDERS } from "@/lib/opensearch-indices";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { email, credentials, size = 50 } = await req.json();
-
-    if (!email || !credentials?.url) {
-      return NextResponse.json({ ok: false, error: "Email and credentials required" }, { status: 400 });
+    const body = await req.json();
+    const { email, size = 200 } = body;
+    const credentials = resolveOpenSearchCredentials(body);
+    if (!email) {
+      return NextResponse.json({ ok: false, error: "email required" }, { status: 400 });
+    }
+    if (!credentials?.url) {
+      return NextResponse.json({ ok: false, error: "OpenSearch not configured — save credentials in Settings" }, { status: 400 });
     }
 
     const searchBody = {

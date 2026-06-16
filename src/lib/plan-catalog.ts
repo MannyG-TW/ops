@@ -10,6 +10,12 @@ const STORAGE_KEY_REGIONAL = "travelwifi_catalog_regional";
 const STORAGE_KEY_GLOBAL = "travelwifi_catalog_global";
 const STORAGE_KEY_ACTIVE = "travelwifi_catalog_active_versions";
 
+// Rental and Sapphire catalogs (same JSON structure, different product category)
+const STORAGE_KEY_RENTAL_LOCAL = "travelwifi_catalog_rental_local";
+const STORAGE_KEY_RENTAL_REGIONAL = "travelwifi_catalog_rental_regional";
+const STORAGE_KEY_SAPPHIRE_LOCAL = "travelwifi_catalog_sapphire_local";
+const STORAGE_KEY_SAPPHIRE_REGIONAL = "travelwifi_catalog_sapphire_regional";
+
 // ─── Types ───
 
 export interface CatalogMeta {
@@ -101,6 +107,12 @@ function getStorageKey(planType: string): string {
   if (planType === "local") return STORAGE_KEY_LOCAL;
   if (planType === "regional") return STORAGE_KEY_REGIONAL;
   if (planType === "global") return STORAGE_KEY_GLOBAL;
+  // Rental catalogs
+  if (planType === "rental_local") return STORAGE_KEY_RENTAL_LOCAL;
+  if (planType === "rental_regional") return STORAGE_KEY_RENTAL_REGIONAL;
+  // Sapphire catalogs
+  if (planType === "sapphire_local") return STORAGE_KEY_SAPPHIRE_LOCAL;
+  if (planType === "sapphire_regional") return STORAGE_KEY_SAPPHIRE_REGIONAL;
   return STORAGE_KEY_LOCAL;
 }
 
@@ -180,7 +192,10 @@ export function validateCatalog(data: unknown): ValidationResult {
   if (!obj.plan_id) errors.push("Missing plan_id");
   if (typeof obj.version !== "number") errors.push("Missing or invalid version (must be a number)");
   if (!obj.currency) errors.push("Missing currency");
-  if (!obj.season_schedule) errors.push("Missing season_schedule");
+  // season_schedule is optional for rental/sapphire catalogs
+  if (!obj.season_schedule && obj.export_type === "connect_pricing") {
+    // Warn but don't block — rental/sapphire may not have seasonal pricing
+  }
 
   result.planType = (obj.plan_type as string) || null;
   result.planId = (obj.plan_id as string) || null;
@@ -380,5 +395,56 @@ export function getCatalogSummaries(): CatalogSummary[] {
     }
   }
 
+  return summaries;
+}
+
+/**
+ * Get catalog summaries for Rental or Sapphire product categories.
+ * These use the same JSON format as eSIM catalogs but stored under separate keys.
+ */
+export function getProductCatalogSummaries(product: "rental" | "sapphire"): CatalogSummary[] {
+  const summaries: CatalogSummary[] = [];
+  const types = product === "rental"
+    ? ["rental_local", "rental_regional"] as const
+    : ["sapphire_local", "sapphire_regional"] as const;
+  const labels = product === "rental"
+    ? ["local", "regional"] as const
+    : ["local", "regional"] as const;
+
+  for (let i = 0; i < types.length; i++) {
+    const t = types[i];
+    const label = labels[i];
+    const data = loadCatalog(t);
+    if (data) {
+      const validation = validateCatalog(data);
+      summaries.push({
+        planType: t,
+        planId: (data.plan_id as string) || "—",
+        version: (data.version as number) || 0,
+        exportedAt: (data.exported_at as string) || "—",
+        currency: (data.currency as string) || "USD",
+        vendorName: ((data.source as Record<string, unknown>)?.vendor_name as string) || "—",
+        sheetVersion: ((data.source as Record<string, unknown>)?.sheet_version as string) || "—",
+        totalProducts: validation.stats.products,
+        totalCountries: validation.stats.countries,
+        storageKey: getStorageKey(t),
+        loaded: true,
+      });
+    } else {
+      summaries.push({
+        planType: t,
+        planId: "—",
+        version: 0,
+        exportedAt: "—",
+        currency: "—",
+        vendorName: "—",
+        sheetVersion: "—",
+        totalProducts: 0,
+        totalCountries: 0,
+        storageKey: getStorageKey(t),
+        loaded: false,
+      });
+    }
+  }
   return summaries;
 }

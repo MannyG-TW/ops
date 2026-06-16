@@ -48,6 +48,11 @@ import * as XLSX from "xlsx";
 
 // ─── Types ───
 
+interface SkippedImei {
+  value: string;
+  reason: "invalid" | "duplicate";
+}
+
 interface UsageReportData {
   data: Record<string, Record<string, number>>;
   dates: string[];
@@ -95,6 +100,7 @@ export default function AnalyzerPage() {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [invalidCount, setInvalidCount] = useState(0);
+  const [skippedImeis, setSkippedImeis] = useState<SkippedImei[]>([]);
   const [imeisLoaded, setImeisLoaded] = useState(false);
 
   // Period config
@@ -132,6 +138,7 @@ export default function AnalyzerPage() {
 
     const errors: string[] = [];
     const valid: string[] = [];
+    const skipped: SkippedImei[] = [];
     let dupes = 0;
     let invalid = 0;
     const seen = new Set<string>();
@@ -140,10 +147,12 @@ export default function AnalyzerPage() {
       const cleaned = line.replace(/\D/g, "");
       if (cleaned.length !== 15 && cleaned.length !== 16) {
         invalid++;
+        skipped.push({ value: line, reason: "invalid" });
         continue;
       }
       if (seen.has(cleaned)) {
         dupes++;
+        skipped.push({ value: cleaned, reason: "duplicate" });
         continue;
       }
       seen.add(cleaned);
@@ -164,6 +173,7 @@ export default function AnalyzerPage() {
     setValidationErrors(errors);
     setDuplicateCount(dupes);
     setInvalidCount(invalid);
+    setSkippedImeis(skipped);
     setImeisLoaded(valid.length > 0);
   }, []);
 
@@ -270,7 +280,7 @@ export default function AnalyzerPage() {
     }
   };
 
-  // ─── CSV Export ───
+  // ─── Excel Export (two tabs) ───
 
   const handleExport = () => {
     if (!reportData) return;
@@ -278,29 +288,38 @@ export default function AnalyzerPage() {
     const { data, dates } = reportData;
     const sortedImeis = Object.keys(data).sort();
 
-    const header = ["imei", ...dates].join(",");
-    const rows = sortedImeis.map((imei) => {
+    // Sheet 1: Usage data
+    const usageRows = sortedImeis.map((imei) => {
       const dateMap = data[imei] || {};
-      const values = dates.map((d) => Math.round(dateMap[d] || 0));
-      return [imei, ...values].join(",");
+      const row: Record<string, string | number> = { IMEI: imei };
+      for (const d of dates) {
+        row[d] = Math.round(dateMap[d] || 0);
+      }
+      return row;
     });
+    const ws1 = XLSX.utils.json_to_sheet(usageRows);
 
-    const csv = [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
+    // Sheet 2: Skipped IMEIs
+    const skippedRows = skippedImeis.map((s) => ({
+      IMEI: s.value,
+      Reason: s.reason === "invalid" ? "invalid length" : "duplicate",
+    }));
+    const ws2 = XLSX.utils.json_to_sheet(
+      skippedRows.length > 0 ? skippedRows : [{ IMEI: "(none)", Reason: "" }]
+    );
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws1, "Usage");
+    XLSX.utils.book_append_sheet(wb, ws2, "Skipped");
 
     let filename: string;
     if (periodMode === "month") {
-      filename = `Bifi_Report_${getMonthLabel(selectedMonth, selectedYear)}.csv`;
+      filename = `Bifi_Report_${getMonthLabel(selectedMonth, selectedYear)}.xlsx`;
     } else {
-      filename = `Bifi_Report_${rangeFrom}_to_${rangeTo}.csv`;
+      filename = `Bifi_Report_${rangeFrom}_to_${rangeTo}.xlsx`;
     }
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    XLSX.writeFile(wb, filename);
   };
 
   // ─── Filtering & Pagination ───
@@ -322,6 +341,7 @@ export default function AnalyzerPage() {
     setImeisLoaded(false);
     setImeis([]);
     setValidationErrors([]);
+    setSkippedImeis([]);
     setBulkInput("");
     setSingleInput("");
     setImeiFilter("");
@@ -355,7 +375,7 @@ export default function AnalyzerPage() {
             {/* Mode Toggle */}
             <div className="flex items-center gap-1.5 rounded-[8px] border border-border bg-muted p-0.5 w-fit">
               <button
-                onClick={() => { setInputMode("single"); setImeisLoaded(false); setImeis([]); setValidationErrors([]); }}
+                onClick={() => { setInputMode("single"); setImeisLoaded(false); setImeis([]); setValidationErrors([]); setSkippedImeis([]); }}
                 className={`rounded-[6px] px-3 py-1.5 text-[13px] font-[540] transition-colors cursor-pointer ${
                   inputMode === "single"
                     ? "bg-white text-charcoal shadow-sm"
@@ -365,7 +385,7 @@ export default function AnalyzerPage() {
                 Single Entry
               </button>
               <button
-                onClick={() => { setInputMode("bulk"); setImeisLoaded(false); setImeis([]); setValidationErrors([]); }}
+                onClick={() => { setInputMode("bulk"); setImeisLoaded(false); setImeis([]); setValidationErrors([]); setSkippedImeis([]); }}
                 className={`rounded-[6px] px-3 py-1.5 text-[13px] font-[540] transition-colors cursor-pointer ${
                   inputMode === "bulk"
                     ? "bg-white text-charcoal shadow-sm"
@@ -499,6 +519,46 @@ export default function AnalyzerPage() {
                     {err}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Skipped IMEIs Detail */}
+            {skippedImeis.length > 0 && (
+              <div className="rounded-[8px] border border-border bg-muted/30 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[13px] font-[540] text-charcoal">
+                    Skipped IMEIs
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 rounded-[6px] text-[12px]"
+                    onClick={() => {
+                      const text = skippedImeis
+                        .map((s) => `${s.value}\t${s.reason === "invalid" ? "invalid length" : "duplicate"}`)
+                        .join("\n");
+                      navigator.clipboard.writeText(text);
+                    }}
+                  >
+                    Copy All
+                  </Button>
+                </div>
+                <div className="max-h-[160px] overflow-y-auto rounded-[6px] bg-white border border-border">
+                  <table className="w-full">
+                    <tbody>
+                      {skippedImeis.map((s, i) => (
+                        <tr key={i} className="border-b border-border last:border-b-0">
+                          <td className="px-3 py-1.5 font-mono text-[12px] font-[540] text-charcoal select-all">
+                            {s.value}
+                          </td>
+                          <td className="px-3 py-1.5 text-[12px] font-[460] text-muted-foreground text-right whitespace-nowrap">
+                            {s.reason === "invalid" ? "invalid length" : "duplicate"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </CardContent>
@@ -739,7 +799,7 @@ export default function AnalyzerPage() {
                 onClick={handleExport}
               >
                 <Download className="h-4 w-4" />
-                Export CSV
+                Export Excel
               </Button>
               <Button
                 variant="ghost"
@@ -828,6 +888,53 @@ export default function AnalyzerPage() {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Skipped IMEIs (in report view) */}
+          {skippedImeis.length > 0 && (
+            <Card className="rounded-[16px]">
+              <CardHeader className="py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-fraud-yellow" />
+                    <CardTitle className="text-[14px] font-[600]">
+                      {skippedImeis.length} Skipped IMEI{skippedImeis.length !== 1 ? "s" : ""}
+                    </CardTitle>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 rounded-[6px] text-[12px]"
+                    onClick={() => {
+                      const text = skippedImeis
+                        .map((s) => `${s.value}\t${s.reason === "invalid" ? "invalid length" : "duplicate"}`)
+                        .join("\n");
+                      navigator.clipboard.writeText(text);
+                    }}
+                  >
+                    Copy All
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="max-h-[200px] overflow-y-auto rounded-[8px] border border-border">
+                  <table className="w-full">
+                    <tbody>
+                      {skippedImeis.map((s, i) => (
+                        <tr key={i} className="border-b border-border last:border-b-0">
+                          <td className="px-3 py-1.5 font-mono text-[12px] font-[540] text-charcoal select-all">
+                            {s.value}
+                          </td>
+                          <td className="px-3 py-1.5 text-[12px] font-[460] text-muted-foreground text-right whitespace-nowrap">
+                            {s.reason === "invalid" ? "invalid length" : "duplicate"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Data Table */}

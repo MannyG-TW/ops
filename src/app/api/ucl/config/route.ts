@@ -39,7 +39,7 @@ export async function GET() {
 /** PUT /api/ucl/config — Update UCL global config */
 export async function PUT(req: NextRequest) {
   const body = await req.json();
-  const { partnerCode, clientId, clientSecret, mvnoCode } = body;
+  const { partnerCode, clientId, clientSecret, mvnoCode, portalUsername, portalPassword } = body;
 
   const existing = db
     .select()
@@ -55,6 +55,8 @@ export async function PUT(req: NextRequest) {
         clientId: clientId ?? "",
         clientSecret: clientSecret ?? "",
         mvnoCode: mvnoCode ?? "",
+        portalUsername: portalUsername ?? "",
+        portalPassword: portalPassword ?? "",
         updatedAt: new Date(),
       })
       .run();
@@ -65,6 +67,8 @@ export async function PUT(req: NextRequest) {
         clientId: clientId ?? existing.clientId,
         clientSecret: clientSecret ?? existing.clientSecret,
         mvnoCode: mvnoCode ?? existing.mvnoCode,
+        portalUsername: portalUsername ?? existing.portalUsername,
+        portalPassword: portalPassword ?? existing.portalPassword,
         updatedAt: new Date(),
       })
       .where(eq(uclGlobalConfig.id, CONFIG_ID))

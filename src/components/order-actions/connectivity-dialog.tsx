@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Signal, Loader2, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchTelliSIM } from "@/lib/settings-client";
+import { parsePlanSku } from "@/lib/sku-parser";
+import { getPlanCountries } from "@/lib/plan-catalog";
+import { getCountryName } from "@/lib/countries";
 
 interface ConnectivityOrder {
   id: string;
@@ -29,6 +32,7 @@ interface ConnectivityDialogProps {
   iccid: string;
   agentName: string;
   agentId: string;
+  planSku?: string;
 }
 
 interface TelliSimSnapshot {
@@ -54,17 +58,31 @@ export function ConnectivityDialog({
   iccid,
   agentName,
   agentId,
+  planSku,
 }: ConnectivityDialogProps) {
   const [telliSimData, setTelliSimData] = useState<TelliSimSnapshot | null>(null);
   const [telliSimLoading, setTelliSimLoading] = useState(false);
   const [telliSimError, setTelliSimError] = useState(false);
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const country =
-    order.destination_country?.toUpperCase().slice(0, 2) ?? "";
+  // Determine if plan is single-country or regional/global
+  const parsed = useMemo(() => planSku ? parsePlanSku(planSku) : null, [planSku]);
+  const isSingleCountry = parsed ? /^[A-Z]{2}$/.test(parsed.countryCode) : false;
+  const coveredCountries = useMemo(() => {
+    if (!planSku) return [];
+    if (isSingleCountry) return [];
+    return getPlanCountries(planSku);
+  }, [planSku, isSingleCountry]);
+  const needsCountrySelection = !isSingleCountry && coveredCountries.length > 0;
+
+  // Resolved country: single-country from SKU, or agent-selected for regional/global
+  const country = isSingleCountry
+    ? parsed?.countryCode ?? order.destination_country?.toUpperCase().slice(0, 2) ?? ""
+    : selectedCountry;
 
   useEffect(() => {
     if (!open || !iccid) return;
@@ -107,6 +125,7 @@ export function ConnectivityDialog({
   function handleClose() {
     setReason("");
     setNotes("");
+    setSelectedCountry("");
     setLoading(false);
     setSuccess(false);
     setTelliSimData(null);
@@ -225,16 +244,45 @@ export function ConnectivityDialog({
               </div>
 
               {/* Country / Order info */}
-              {country && (
-                <div className="rounded-[8px] bg-lavender/10 border border-lavender/20 px-4 py-3">
+              <div className="rounded-[8px] bg-lavender/10 border border-lavender/20 px-4 py-3 space-y-2">
+                {isSingleCountry && parsed ? (
                   <p className="text-[12px] font-[460] text-charcoal">
-                    <span className="font-[600]">Destination:</span> {country}
+                    <span className="font-[600]">Country:</span> {parsed.countryName} ({parsed.countryCode})
                     {order.customer_email && (
                       <span className="ml-2 text-muted-foreground">— {order.customer_email}</span>
                     )}
                   </p>
-                </div>
-              )}
+                ) : needsCountrySelection ? (
+                  <div>
+                    <p className="text-[12px] font-[600] text-charcoal mb-1.5">
+                      Country <span className="text-fraud-red">*</span>
+                      <span className="font-[460] text-muted-foreground ml-1">— {parsed?.countryName || "Regional/Global"} plan, select where the issue is occurring</span>
+                    </p>
+                    <Select value={selectedCountry} onValueChange={(v) => setSelectedCountry(v ?? "")}>
+                      <SelectTrigger className="rounded-[8px] text-[13px] font-[460]">
+                        <SelectValue placeholder="Select country…" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-[8px] max-h-[200px]">
+                        {coveredCountries.map((c) => (
+                          <SelectItem key={c} value={c} className="text-[13px] font-[460]">
+                            {getCountryName(c)} ({c})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {order.customer_email && (
+                      <p className="text-[11px] font-[460] text-muted-foreground mt-1">{order.customer_email}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[12px] font-[460] text-charcoal">
+                    <span className="font-[600]">Destination:</span> {order.destination_country || "Unknown"}
+                    {order.customer_email && (
+                      <span className="ml-2 text-muted-foreground">— {order.customer_email}</span>
+                    )}
+                  </p>
+                )}
+              </div>
 
               {/* Reason */}
               <div>
@@ -276,7 +324,7 @@ export function ConnectivityDialog({
                 </Button>
                 <Button
                   onClick={handleSubmit}
-                  disabled={!reason || loading}
+                  disabled={!reason || (needsCountrySelection && !selectedCountry) || loading}
                   className="rounded-[8px] bg-amethyst text-white text-[13px] font-[600] hover:bg-amethyst/90 disabled:opacity-40 cursor-pointer"
                 >
                   {loading ? "Reporting…" : "Report Issue"}

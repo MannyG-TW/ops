@@ -65,3 +65,4 @@ docs/UCL_WEB_ACCOUNTS.md
 # local agent state
 /.claude/
 /.remember/
+.omc/

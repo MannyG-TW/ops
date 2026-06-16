@@ -72,8 +72,52 @@ function parseMentions(text: string): string[] {
   return [...new Set(ids)];
 }
 
+/** Parse escalation note into structured parts */
+function parseEscalationNote(body: string): { type: "escalated" | "status" | "note"; orderNumber: string; content: string } | null {
+  // [Escalated] Order TW-123: reason text
+  const escalatedMatch = body.match(/^\[Escalated\]\s*Order\s+([^:]+):\s*([\s\S]+)$/);
+  if (escalatedMatch) {
+    return { type: "escalated", orderNumber: escalatedMatch[1].trim(), content: escalatedMatch[2].trim() };
+  }
+  // [Escalation - TW-123] note content
+  const noteMatch = body.match(/^\[Escalation\s*-\s*([^\]]+)\]\s*([\s\S]+)$/);
+  if (noteMatch) {
+    const content = noteMatch[2].trim();
+    const isStatus = content.includes("started reviewing") || content.includes("Marked as resolved") || content.includes("Reopened");
+    return { type: isStatus ? "status" : "note", orderNumber: noteMatch[1].trim(), content };
+  }
+  return null;
+}
+
 /** Render note body with @mention chips highlighted */
 function NoteBody({ body }: { body: string }) {
+  // Check if this is an escalation note
+  const esc = parseEscalationNote(body);
+  if (esc) {
+    return (
+      <div className="rounded-[8px] border border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 px-3 py-2 mt-0.5">
+        <div className="flex items-center gap-2 mb-1">
+          <span className={cn(
+            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[10px] font-[600] uppercase tracking-wide",
+            esc.type === "escalated"
+              ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+              : esc.type === "status"
+              ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+              : "bg-lavender/20 text-amethyst"
+          )}>
+            {esc.type === "escalated" ? "Escalated" : esc.type === "status" ? "Status" : "Note"}
+          </span>
+          <span className="text-[11px] font-[540] text-muted-foreground">
+            {esc.orderNumber}
+          </span>
+        </div>
+        <p className="text-[12px] font-[460] text-foreground leading-relaxed">
+          {esc.content}
+        </p>
+      </div>
+    );
+  }
+
   const parts = body.split(/(@\w+(?:\s\w+)?)/g);
   return (
     <p className="text-[13px] font-[460] text-foreground leading-relaxed">

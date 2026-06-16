@@ -1,11 +1,12 @@
 "use client";
 
-import { Search, Sun, Moon, Bell, Check, CheckCheck, AtSign, AlertTriangle, ClipboardList, Info } from "lucide-react";
+import { Search, Sun, Moon, Bell, Check, CheckCheck, AtSign, AlertTriangle, ClipboardList, Info, Inbox } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { TEAM_MEMBERS, type TeamMember } from "@/components/ui/internal-notes";
+import { getRoleFromTeamMember } from "@/lib/roles";
 
 interface Notification {
   id: string;
@@ -40,6 +41,8 @@ export function Topbar() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [escalationCount, setEscalationCount] = useState(0);
+  const [isSupervisor, setIsSupervisor] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -78,6 +81,28 @@ export function Topbar() {
       }
     }
   }, [fetchNotifications]);
+
+  // Check role + fetch escalation queue count for supervisors
+  useEffect(() => {
+    const effectiveRole = user ? getRoleFromTeamMember(user.role) : "agent";
+    const sup = effectiveRole === "supervisor" || effectiveRole === "admin";
+    setIsSupervisor(sup);
+    if (!sup) return;
+
+    function fetchEscCount() {
+      fetch("/api/escalations")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.ok && data.counts) {
+            setEscalationCount(data.counts["new"] ?? 0);
+          }
+        })
+        .catch(() => {});
+    }
+    fetchEscCount();
+    const interval = setInterval(fetchEscCount, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -178,6 +203,22 @@ export function Topbar() {
 
       {/* Right Actions */}
       <div className="flex items-center gap-2">
+        {/* Escalation Queue — supervisor/admin only */}
+        {isSupervisor && (
+          <button
+            onClick={() => router.push("/escalations")}
+            className="relative flex h-9 w-9 items-center justify-center rounded-[8px] text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground cursor-pointer"
+            title="Escalation Queue"
+          >
+            <Inbox className="h-[18px] w-[18px]" strokeWidth={1.8} />
+            {escalationCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white px-1">
+                {escalationCount > 99 ? "99+" : escalationCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {/* Notifications */}
         <div ref={notifRef} className="relative">
           <button
