@@ -8,18 +8,20 @@ import { runCriteria, type Criteria, type ExportRow } from "./query";
 
 const HEADERS = [
   "First Name", "Customer Name", "Email", "Phone", "System",
+  "Storefront Country", "Likely US",
   "Product Segment", "Also Bought", "First Purchase", "Last Purchase",
   "Orders (segment)", "Total Spent USD", "Destinations",
   "In Omnisend", "Email Status", "Email Consent", "Email Opt-in", "SMS Status",
   "City", "State", "Country", "Omnisend Tags",
 ];
 const EXCLUDED_HEADERS = ["Reason", ...HEADERS];
-const WIDTHS = [16, 20, 30, 17, 9, 14, 16, 13, 13, 14, 13, 34, 11, 14, 12, 12, 12, 14, 8, 14, 22];
+const WIDTHS = [16, 20, 30, 17, 9, 16, 9, 14, 16, 13, 13, 14, 13, 34, 11, 14, 12, 12, 12, 14, 8, 14, 22];
 
 function toSheetRow(r: ExportRow): Record<string, string | number> {
   return {
     "First Name": r.firstName, "Customer Name": r.customerName, "Email": r.email, "Phone": r.phone,
-    "System": r.system, "Product Segment": r.segment, "Also Bought": r.alsoBought,
+    "System": r.system, "Storefront Country": r.storefrontCountry, "Likely US": r.likelyUs,
+    "Product Segment": r.segment, "Also Bought": r.alsoBought,
     "First Purchase": r.firstPurchase, "Last Purchase": r.lastPurchase,
     "Orders (segment)": r.orders, "Total Spent USD": Math.round(r.totalSpentUsd * 100) / 100,
     "Destinations": r.destinations, "In Omnisend": r.inOmnisend, "Email Status": r.emailStatus,

@@ -21,6 +21,30 @@ function buildMatcherFromDb() {
   return buildMatcher(domains, names);
 }
 
+/* ─── Storefront country (derived from the `system` code's trailing country) ─── */
+// system codes embed the storefront country as a trailing 2-letter code:
+//   TWUS / NVUS / TWFIUS / CMRPUNTOSUS / SKYPLUSUS / AAFESUS → US
+//   TWEU / NVEU → Europe (region) · TWCL / NVCL / CMRPUNTOSCL → Chile
+//   TWSG → Singapore · TWCH → Switzerland · NVMX / NVAR → Mexico / Argentina
+// A few don't follow the suffix rule: QRO (Querétaro, Mexico); *LOCAL / B2C / GNG (test/unknown).
+const SYSTEM_COUNTRY_NAMES: Record<string, string> = {
+  US: "United States", CA: "Canada", EU: "Europe", CL: "Chile", MX: "Mexico",
+  AR: "Argentina", CH: "Switzerland", SG: "Singapore", GB: "United Kingdom", AU: "Australia",
+};
+
+/** Storefront code ends in the US country code → treat as a US customer (100% coverage). */
+export function isUsSystem(system: string | null | undefined): boolean {
+  return /US$/i.test((system || "").trim());
+}
+
+/** Human-readable storefront country from a system code, or "" if not derivable. */
+export function systemCountry(system: string | null | undefined): string {
+  const s = (system || "").trim().toUpperCase();
+  if (!s || /LOCAL$/.test(s) || s === "B2C" || s === "B2B" || s === "B2P" || s === "GNG") return "";
+  if (s === "QRO") return "Mexico";
+  return SYSTEM_COUNTRY_NAMES[s.slice(-2)] || "";
+}
+
 /* ─────────────────────────── SEARCH ─────────────────────────── */
 
 export interface CustomerHit {
@@ -111,10 +135,12 @@ export interface Criteria {
   subscription?: "any" | "exclude_unsub" | "subscribed_only";
   minSpend?: number | null;
   maxSpend?: number | null;
+  countryFilter?: "any" | "us" | "non_us"; // storefront-country (system suffix) filter
 }
 
 export interface ExportRow {
   firstName: string; customerName: string; email: string; phone: string; system: string;
+  storefrontCountry: string; likelyUs: string;
   segment: string; alsoBought: string; firstPurchase: string; lastPurchase: string;
   orders: number; totalSpentUsd: number; destinations: string;
   inOmnisend: string; emailStatus: string; emailConsent: string; optIn: string; smsStatus: string;
@@ -141,6 +167,8 @@ export function runCriteria(criteria: Criteria): CriteriaResult {
     cutoff.setMonth(cutoff.getMonth() - criteria.monthsBack);
     where.push(gte(MCS.lastPurchase, Math.floor(cutoff.getTime() / 1000)));
   }
+  if (criteria.countryFilter === "us") where.push(sql`upper(${MCS.system}) like '%US'`);
+  else if (criteria.countryFilter === "non_us") where.push(sql`upper(${MCS.system}) not like '%US'`);
 
   const joined = db
     .select({
@@ -180,6 +208,8 @@ export function runCriteria(criteria: Criteria): CriteriaResult {
       email: r.email,
       phone: r.phone || r.cPhone || "",
       system: r.system,
+      storefrontCountry: systemCountry(r.system),
+      likelyUs: isUsSystem(r.system) ? "yes" : "no",
       segment: r.segment,
       alsoBought: [...(segsByEmail.get(r.email) ?? [])].filter((s) => s !== r.segment).sort().join(", "),
       firstPurchase: isoDate(r.firstPurchase),

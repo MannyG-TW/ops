@@ -28,7 +28,7 @@ export function OverviewTab({ state, onChanged }: { state: SyncState | null; onC
   async function runSync() {
     setSyncing(true); setMsg("");
     try {
-      const res = await mfetch("/api/marketing/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ months: 24 }) });
+      const res = await mfetch("/api/marketing/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ months: null }) });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       setMsg(`Synced ${data.segmentRows.toLocaleString()} segment rows for ${data.customers.toLocaleString()} customers.`);
@@ -65,7 +65,7 @@ export function OverviewTab({ state, onChanged }: { state: SyncState | null; onC
               <div><div className="text-[22px] font-[600]">{(state?.osSegmentRows ?? 0).toLocaleString()}</div><div className="text-muted-foreground">segment rows</div></div>
             </div>
             <Button onClick={runSync} disabled={syncing} className="gap-2">
-              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing… (~60s)" : "Refresh data"}
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing all-time… (~2–3 min)" : "Refresh data (all-time)"}
             </Button>
           </CardContent>
         </Card>

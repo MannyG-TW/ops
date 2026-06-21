@@ -244,6 +244,9 @@ export const marketingCustomerSegments = sqliteTable("marketing_customer_segment
   orders: integer("orders").notNull().default(0),
   totalSpentUsd: real("total_spent_usd").notNull().default(0),
   destinations: text("destinations").notNull().default(""), // comma-separated country/region names
+  lastTrip: integer("last_trip"), // epoch SECONDS — most recent rental trip-end (→ LAST_TRIP_AT)
+  lastDestination: text("last_destination").notNull().default(""), // dest name of the most recent order w/ a destination (→ DEST_COUNTRY)
+  lastDestAt: integer("last_dest_at"), // epoch SECONDS of that destination's order (to pick latest across segments)
   syncedAt: integer("synced_at", { mode: "timestamp" }).notNull(),
 }, (t) => [
   uniqueIndex("mcs_email_segment_idx").on(t.email, t.segment),

@@ -50,7 +50,7 @@ interface OrderSource {
   customer_email?: string; customer_name?: string; customer_phone?: string;
   system?: string; created_at?: number | string; total?: number | string;
   order_usd_rate_exchange?: string; product_sku?: string | string[];
-  order_details_data?: Array<{ product_sku?: string; package_sku?: string }>;
+  order_details_data?: Array<{ product_sku?: string; package_sku?: string; trip_start?: string | number; trip_end?: string | number }>;
 }
 
 function orderSkus(o: OrderSource): { product: string[]; pkg: string[] } {
@@ -70,6 +70,15 @@ const toUsd = (total: unknown, rate: unknown): number => {
   const r = parseFloat(String(rate));
   return r > 0 ? t / r : t;
 };
+// Coerce a date-ish value (epoch s/ms or date string) to epoch SECONDS; 0 if unparseable.
+const toSec = (v: unknown): number => {
+  if (v == null || v === "") return 0;
+  if (typeof v === "number") return v > 1e12 ? Math.floor(v / 1000) : Math.floor(v);
+  const s = String(v).trim();
+  if (/^\d{9,13}$/.test(s)) { const n = parseInt(s, 10); return n > 1e12 ? Math.floor(n / 1000) : n; }
+  const t = Date.parse(s);
+  return isNaN(t) ? 0 : Math.floor(t / 1000);
+};
 const firstNameOf = (full: string): string => {
   if (!full) return "";
   const base = full.includes(",") ? full.split(",")[1] : full;
@@ -81,25 +90,30 @@ interface Agg {
   name: string; firstName: string; phone: string; system: string;
   nameTs: number; phoneTs: number; sysTs: number;
   firstTs: number; lastTs: number; orders: number; totalUsd: number; destinations: Set<string>;
+  lastTrip: number; lastDest: string; lastDestAt: number;
 }
 
 export interface SyncResult {
   totalMatched: number; processed: number; segmentRows: number; customers: number;
 }
 
-export async function syncOrders({ months = 24, onProgress }: { months?: number; onProgress?: (n: number) => void } = {}): Promise<SyncResult> {
+export async function syncOrders({ months = null, onProgress }: { months?: number | null; onProgress?: (n: number) => void } = {}): Promise<SyncResult> {
   const creds = getServerOpenSearchCredentials();
   if (!creds?.url) throw new Error("OpenSearch not configured — save credentials in Settings");
   const base = creds.url.replace(/\/$/, "");
   const auth = "Basic " + Buffer.from(`${creds.username}:${creds.password}`).toString("base64");
 
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - months);
-  const cutoffSec = Math.floor(cutoff.getTime() / 1000);
+  // months = null → all-time (the canonical Noomi list needs lifetime purchase history).
+  const filter: Array<Record<string, unknown>> = [];
+  if (months != null) {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - months);
+    filter.push({ range: { created_at: { gte: Math.floor(cutoff.getTime() / 1000) } } });
+  }
 
   const query = {
     bool: {
-      filter: [{ range: { created_at: { gte: cutoffSec } } }],
+      filter,
       must_not: [
         { terms: { "status.keyword": EXCLUDE_STATUSES } },
         { terms: { "system.keyword": EXCLUDE_SYSTEMS } },
@@ -140,6 +154,7 @@ export async function syncOrders({ months = 24, onProgress }: { months?: number;
       byType.set(type, {
         name: "", firstName: "", phone: "", system: "", nameTs: -1, phoneTs: -1, sysTs: -1,
         firstTs: Infinity, lastTs: 0, orders: 0, totalUsd: 0, destinations: new Set(),
+        lastTrip: 0, lastDest: "", lastDestAt: 0,
       });
     }
     const agg = byType.get(type)!;
@@ -147,10 +162,17 @@ export async function syncOrders({ months = 24, onProgress }: { months?: number;
     agg.totalUsd += toUsd(src.total, src.order_usd_rate_exchange);
     if (ts && ts < agg.firstTs) agg.firstTs = ts;
     if (ts > agg.lastTs) agg.lastTs = ts;
+    const orderDests: string[] = [];
     for (const sku of [...product, ...pkg]) {
       const d = destinationName(skuCountryCode(sku));
-      if (d) agg.destinations.add(d);
+      if (d) { agg.destinations.add(d); orderDests.push(d); }
     }
+    // Most-recent destination (→ DEST_COUNTRY): the destination tied to the latest order.
+    if (orderDests.length && ts >= agg.lastDestAt) { agg.lastDest = orderDests[0]; agg.lastDestAt = ts; }
+    // Most-recent rental trip-end (→ LAST_TRIP_AT).
+    let tripEnd = 0;
+    for (const d of src.order_details_data ?? []) { const te = toSec(d?.trip_end); if (te > tripEnd) tripEnd = te; }
+    if (tripEnd > agg.lastTrip) agg.lastTrip = tripEnd;
     if (ts >= agg.nameTs && src.customer_name) {
       agg.name = String(src.customer_name).trim();
       agg.firstName = firstNameOf(agg.name);
@@ -199,6 +221,9 @@ export async function syncOrders({ months = 24, onProgress }: { months?: number;
         orders: agg.orders,
         totalSpentUsd: Math.round(agg.totalUsd * 100) / 100,
         destinations: [...agg.destinations].filter(Boolean).sort().join(", "),
+        lastTrip: agg.lastTrip || null,
+        lastDestination: agg.lastDest || "",
+        lastDestAt: agg.lastDestAt || null,
         syncedAt: now,
       });
     }

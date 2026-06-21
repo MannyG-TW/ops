@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { Download, Eye, Loader2 } from "lucide-react";
 import { mfetch } from "@/lib/marketing/client";
+import type { BrevoSummary } from "@/lib/marketing/brevo";
 
 export interface Facets { segments: string[]; systems: string[]; destinations: string[]; }
 
@@ -16,10 +17,18 @@ interface Criteria {
   segments: string[]; systems: string[]; destination: string;
   monthsBack: number | null; subscription: "any" | "exclude_unsub" | "subscribed_only";
   minSpend: number | null; maxSpend: number | null;
+  countryFilter: "any" | "us" | "non_us";
 }
 interface Counts { matched: number; sendable: number; unsubscribed: number; excluded: number; uniqueEmails: number; }
 
-const MONTHS = [{ l: "12 mo", v: 12 }, { l: "24 mo", v: 24 }, { l: "All time", v: null }];
+const MONTHS = [
+  { l: "1 mo", v: 1 }, { l: "2 mo", v: 2 }, { l: "3 mo", v: 3 },
+  { l: "6 mo", v: 6 }, { l: "12 mo", v: 12 }, { l: "24 mo", v: 24 }, { l: "All time", v: null },
+];
+const PRESET_MONTHS = new Set([1, 2, 3, 6, 12, 24]);
+const LOCATIONS = [
+  { l: "Any", v: "any" }, { l: "US only", v: "us" }, { l: "Non-US", v: "non_us" },
+] as const;
 const SUBS = [
   { l: "Any", v: "any" }, { l: "Exclude unsubscribed", v: "exclude_unsub" }, { l: "Subscribed only", v: "subscribed_only" },
 ] as const;
@@ -34,7 +43,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 }
 
 export function ExportTab({ facets }: { facets: Facets }) {
-  const [c, setC] = useState<Criteria>({ segments: [], systems: [], destination: "", monthsBack: 12, subscription: "exclude_unsub", minSpend: null, maxSpend: null });
+  const [c, setC] = useState<Criteria>({ segments: [], systems: [], destination: "", monthsBack: 12, subscription: "exclude_unsub", minSpend: null, maxSpend: null, countryFilter: "any" });
   const [counts, setCounts] = useState<Counts | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -66,7 +75,8 @@ export function ExportTab({ facets }: { facets: Facets }) {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <Card className="lg:col-span-2">
         <CardHeader className="pb-2"><CardTitle className="text-[15px]">Build a list</CardTitle></CardHeader>
         <CardContent className="space-y-4">
@@ -84,9 +94,34 @@ export function ExportTab({ facets }: { facets: Facets }) {
               <datalist id="dest-list">{facets.destinations.map((d) => <option key={d} value={d} />)}</datalist>
             </div>
             <div>
-              <Label className="text-[13px]">Purchased within</Label>
-              <div className="mt-1.5 flex gap-1.5">{MONTHS.map((m) => <Chip key={m.l} active={c.monthsBack === m.v} onClick={() => setC((p) => ({ ...p, monthsBack: m.v }))}>{m.l}</Chip>)}</div>
+              <Label className="text-[13px]">Customer location</Label>
+              <div className="mt-1.5 flex gap-1.5">{LOCATIONS.map((l) => <Chip key={l.v} active={c.countryFilter === l.v} onClick={() => setC((p) => ({ ...p, countryFilter: l.v }))}>{l.l}</Chip>)}</div>
+              <p className="mt-1 text-[11px] text-muted-foreground">By storefront country (US/Non-US from the order’s system code).</p>
             </div>
+          </div>
+
+          <div>
+            <Label className="text-[13px]">Purchased within</Label>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {MONTHS.map((m) => <Chip key={m.l} active={c.monthsBack === m.v} onClick={() => setC((p) => ({ ...p, monthsBack: m.v }))}>{m.l}</Chip>)}
+              <span className="mx-0.5 text-[12px] text-muted-foreground">or</span>
+              <Input
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={c.monthsBack != null && !PRESET_MONTHS.has(c.monthsBack) ? String(c.monthsBack) : ""}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (!raw) { setC((p) => ({ ...p, monthsBack: null })); return; }
+                  const n = Math.max(1, Math.floor(Number(raw)));
+                  if (Number.isFinite(n)) setC((p) => ({ ...p, monthsBack: n }));
+                }}
+                placeholder="custom"
+                className="h-7 w-[5.5rem] text-[12px]"
+              />
+              <span className="text-[12px] text-muted-foreground">months</span>
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">Snapshot holds ~24 months; larger values are capped by the last sync.</p>
           </div>
 
           <div>
@@ -130,6 +165,9 @@ export function ExportTab({ facets }: { facets: Facets }) {
           )}
         </CardContent>
       </Card>
+      </div>
+
+      <BrevoExportCard />
     </div>
   );
 }
@@ -139,6 +177,67 @@ function Row({ label, value, strong }: { label: string; value: number; strong?: 
     <div className="flex items-center justify-between">
       <span className="text-muted-foreground">{label}</span>
       <span className={strong ? "text-[18px] font-[600]" : "font-[540]"}>{value.toLocaleString()}</span>
+    </div>
+  );
+}
+
+/* ── Canonical Noomi list (Brevo) — the FULL deduped contact base, not filtered ── */
+function BrevoExportCard() {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [summary, setSummary] = useState<BrevoSummary | null>(null);
+
+  async function download() {
+    setBusy(true); setErr("");
+    try {
+      const res = await mfetch("/api/marketing/export-brevo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      if (!res.ok) { setErr("Export failed — try again."); return; }
+      const sumHeader = res.headers.get("X-Brevo-Summary");
+      if (sumHeader) { try { setSummary(JSON.parse(decodeURIComponent(sumHeader)) as BrevoSummary); } catch { /* ignore */ } }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `noomi-brevo-contacts-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch { setErr("Export failed — try again."); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-[15px]">Canonical Noomi list (Brevo)</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-[13px] text-muted-foreground">
+          The full deduped contact base — purchasers + Omnisend prospects + unsubscribed — one row per email, in Brevo&apos;s
+          import schema. This is the whole list; the filters above do <span className="font-[540]">not</span> apply. Run an
+          all-time <span className="font-[540]">Refresh</span> on the Overview tab first so lifetime spend and dates are complete.
+        </p>
+        <Button onClick={download} disabled={busy} className="gap-2">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {busy ? "Building… (~30s)" : "Download Noomi CSV"}
+        </Button>
+        {err && <p className="text-[13px] text-destructive">{err}</p>}
+        {summary && (
+          <div className="space-y-1.5 rounded-[8px] border border-border bg-muted/40 p-3 text-[12px]">
+            <div className="flex items-center justify-between"><span className="text-muted-foreground">Total rows</span><span className="text-[14px] font-[600]">{summary.total.toLocaleString()}</span></div>
+            <SummaryLine label="Purchasers / prospects" value={`${(summary.byContactType.purchaser || 0).toLocaleString()} / ${(summary.byContactType.prospect || 0).toLocaleString()}`} />
+            <SummaryLine label="Subscribed / unsub / unknown" value={`${(summary.byMarketingStatus.subscribed || 0).toLocaleString()} / ${(summary.byMarketingStatus.unsubscribed || 0).toLocaleString()} / ${(summary.byMarketingStatus.unknown || 0).toLocaleString()}`} />
+            <SummaryLine label="Source omnisend / opensearch / both" value={`${(summary.byLegacySource.omnisend || 0).toLocaleString()} / ${(summary.byLegacySource.opensearch || 0).toLocaleString()} / ${(summary.byLegacySource.both || 0).toLocaleString()}`} />
+            <SummaryLine label="Country US / non-US / unknown" value={`${summary.country.us.toLocaleString()} / ${summary.country.nonUs.toLocaleString()} / ${summary.country.unknown.toLocaleString()}`} />
+            {summary.droppedInvalidEmails > 0 && <SummaryLine label="Dropped invalid emails" value={summary.droppedInvalidEmails.toLocaleString()} />}
+            <p className="pt-1 text-[11px] text-muted-foreground">Engagement columns (open / click / score) are blank — not in our Omnisend import.</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SummaryLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-[540]">{value}</span>
     </div>
   );
 }

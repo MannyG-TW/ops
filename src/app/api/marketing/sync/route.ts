@@ -11,7 +11,9 @@ export async function POST(req: NextRequest) {
   const denied = marketingForbidden(req); if (denied) return denied;
   try {
     const body = await req.json().catch(() => ({}));
-    const months = Number(body?.months ?? 24);
+    // null / "all" / <=0 → all-time (default for the canonical lifetime snapshot).
+    const raw = body?.months;
+    const months = raw == null || raw === "all" || Number(raw) <= 0 ? null : Number(raw);
     const result = await syncOrders({ months });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
