@@ -209,7 +209,8 @@ function BrevoExportCard() {
       <CardContent className="space-y-3">
         <p className="text-[13px] text-muted-foreground">
           The full deduped contact base — purchasers + Omnisend prospects + unsubscribed — one row per email, in Brevo&apos;s
-          import schema. This is the whole list; the filters above do <span className="font-[540]">not</span> apply. Run an
+          import schema. This is the whole list; the filters above do <span className="font-[540]">not</span> apply, and
+          exclusion-list contacts (internal/test domains, fraud names) are removed. Run an
           all-time <span className="font-[540]">Refresh</span> on the Overview tab first so lifetime spend and dates are complete.
         </p>
         <Button onClick={download} disabled={busy} className="gap-2">
@@ -225,6 +226,7 @@ function BrevoExportCard() {
             <SummaryLine label="Source omnisend / opensearch / both" value={`${(summary.byLegacySource.omnisend || 0).toLocaleString()} / ${(summary.byLegacySource.opensearch || 0).toLocaleString()} / ${(summary.byLegacySource.both || 0).toLocaleString()}`} />
             <SummaryLine label="Country US / non-US / unknown" value={`${summary.country.us.toLocaleString()} / ${summary.country.nonUs.toLocaleString()} / ${summary.country.unknown.toLocaleString()}`} />
             {summary.droppedInvalidEmails > 0 && <SummaryLine label="Dropped invalid emails" value={summary.droppedInvalidEmails.toLocaleString()} />}
+            {summary.droppedExcluded > 0 && <SummaryLine label="Dropped (exclusion list)" value={summary.droppedExcluded.toLocaleString()} />}
             <p className="pt-1 text-[11px] text-muted-foreground">Engagement columns (open / click / score) are blank — not in our Omnisend import.</p>
           </div>
         )}

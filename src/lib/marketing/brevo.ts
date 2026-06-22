@@ -34,6 +34,7 @@ export interface BrevoSummary {
   byLegacySource: Record<string, number>;
   country: { us: number; nonUs: number; unknown: number };
   droppedInvalidEmails: number;
+  droppedExcluded: number;
   runDate: string;
 }
 
@@ -178,7 +179,7 @@ export function buildBrevoCsv(opts: { runDate?: Date } = {}): { csv: string; sum
 
   const summary: BrevoSummary = {
     total: 0, byContactType: {}, byMarketingStatus: {}, byLegacySource: {},
-    country: { us: 0, nonUs: 0, unknown: 0 }, droppedInvalidEmails: 0,
+    country: { us: 0, nonUs: 0, unknown: 0 }, droppedInvalidEmails: 0, droppedExcluded: 0,
     runDate: isoDate(Math.floor(runMs / 1000)),
   };
   const bump = (o: Record<string, number>, k: string) => { o[k] = (o[k] || 0) + 1; };
@@ -198,6 +199,10 @@ export function buildBrevoCsv(opts: { runDate?: Date } = {}): { csv: string; sum
     const firstName = (c?.firstName || p?.firstName || parsed.first || "").trim();
     const lastName = (c?.lastName || parsed.last || "").trim();
 
+    // Exclusions (internal/test domains, fraud/exclusion names) → dropped entirely
+    // from the canonical list so they never reach Brevo.
+    if (matcher.reason(email, [firstName, lastName].filter(Boolean).join(" "))) { summary.droppedExcluded++; continue; }
+
     // SOURCE_PRODUCT
     let sourceProduct: string;
     if (!isPurchaser) sourceProduct = "None";
@@ -216,7 +221,7 @@ export function buildBrevoCsv(opts: { runDate?: Date } = {}): { csv: string; sum
     const marketingStatus = !inOmnisend ? "unknown" : c!.emailStatus === "Unsubscribed" ? "unsubscribed" : "subscribed";
     const emailOptin = subscribed ? "Yes" : "No";
 
-    const blocked = matcher.reason(email, [firstName, lastName].filter(Boolean).join(" ")) ? "Yes" : "No";
+    const blocked = "No"; // exclusion matches are dropped above; column kept for the fixed schema
     const legacySource = isPurchaser && inOmnisend ? "both" : isPurchaser ? "opensearch" : "omnisend";
     const contactType = isPurchaser ? "purchaser" : "prospect";
 
