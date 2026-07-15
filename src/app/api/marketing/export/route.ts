@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { db } from "@/lib/db";
 import { marketingSyncState } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -28,6 +29,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });
+    return sanitizeError(err, "Request");
   }
 }

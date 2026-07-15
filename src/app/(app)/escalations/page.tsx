@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -110,12 +110,11 @@ interface OrderDetails {
   status?: string;
   system?: string;
   total?: number;
-  currency?: string;
+  currency_iso?: string;
   created_at?: string | number;
   delivery_address?: string;
   warehouse?: string | string[];
   product_sku?: string | string[];
-  destination_country?: string;
   order_details_data?: Array<{
     product_sku?: string;
     package_sku?: string;
@@ -168,6 +167,11 @@ export default function EscalationsPage() {
   const [escalations, setEscalations] = useState<Escalation[]>([]);
   const [counts, setCounts] = useState({ new: 0, in_review: 0, resolved: 0 });
   const [loading, setLoading] = useState(true);
+  // Monotonic ids drop stale responses: a tab/page/search change (or a second
+  // escalation click) must not let an older in-flight fetch paint the previous
+  // selection's list/notes/order under the current one.
+  const listSeqRef = useRef(0);
+  const detailSeqRef = useRef(0);
   const [selectedEscalation, setSelectedEscalation] = useState<Escalation | null>(null);
   const [notes, setNotes] = useState<EscalationNote[]>([]);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
@@ -212,6 +216,7 @@ export default function EscalationsPage() {
 
   // Fetch escalations list
   const fetchEscalations = useCallback(async () => {
+    const seq = ++listSeqRef.current;
     try {
       const params = new URLSearchParams();
       params.set("status", activeTab);
@@ -221,6 +226,7 @@ export default function EscalationsPage() {
 
       const res = await fetch(`/api/escalations?${params.toString()}`);
       const data = await res.json();
+      if (seq !== listSeqRef.current) return; // a newer tab/page/search won
       if (data.ok) {
         setEscalations(data.escalations);
         setCounts(data.counts);
@@ -229,7 +235,7 @@ export default function EscalationsPage() {
     } catch {
       // silent
     } finally {
-      setLoading(false);
+      if (seq === listSeqRef.current) setLoading(false);
     }
   }, [activeTab, page, debouncedSearch]);
 
@@ -253,11 +259,13 @@ export default function EscalationsPage() {
     setDetailLoading(true);
     setOrderDetails(null);
     setNotes([]);
+    const seq = ++detailSeqRef.current;
 
     try {
       // Fetch escalation notes
       const escRes = await fetch(`/api/escalations/${esc.id}`);
       const escData = await escRes.json();
+      if (seq !== detailSeqRef.current) return; // a newer escalation was opened
       if (escData.ok) {
         setNotes(escData.notes);
       }
@@ -265,6 +273,7 @@ export default function EscalationsPage() {
       // Fetch order details from OpenSearch (POST with credentials resolved server-side)
       try {
         const orderData = await fetchOS(`/api/opensearch/orders/${esc.orderId}`, {});
+        if (seq !== detailSeqRef.current) return;
         if (orderData.order) {
           setOrderDetails(orderData.order);
         }
@@ -274,7 +283,7 @@ export default function EscalationsPage() {
     } catch {
       // silent
     } finally {
-      setDetailLoading(false);
+      if (seq === detailSeqRef.current) setDetailLoading(false);
     }
   }
 
@@ -736,7 +745,7 @@ export default function EscalationsPage() {
                             {orderDetails.total != null && (
                               <span className="flex items-center gap-0.5 text-[12px] font-[540] text-foreground">
                                 <DollarSign className="h-3 w-3 text-muted-foreground" strokeWidth={1.8} />
-                                {orderDetails.currency ?? ""}{orderDetails.total}
+                                {orderDetails.total}{orderDetails.currency_iso ? ` ${orderDetails.currency_iso.toUpperCase()}` : ""}
                               </span>
                             )}
                           </div>
@@ -802,14 +811,6 @@ export default function EscalationsPage() {
                         </div>
                       )}
 
-                      {/* Destination */}
-                      {orderDetails.destination_country && (
-                        <div className="flex items-center gap-2 text-[12px]">
-                          <Globe className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.8} />
-                          <span className="font-[460] text-muted-foreground">Destination:</span>
-                          <span className="font-[540] text-foreground">{orderDetails.destination_country}</span>
-                        </div>
-                      )}
 
                       {/* Tracking — Rental Device only */}
                       {productType === "Rental Device" && (orderDetails.tracking_information ?? []).length > 0 && (

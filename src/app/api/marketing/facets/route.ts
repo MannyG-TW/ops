@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { db } from "@/lib/db";
 import { marketingSyncState } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -13,6 +14,6 @@ export async function GET(req: Request) {
     const state = db.select().from(marketingSyncState).where(eq(marketingSyncState.id, "default")).get() ?? null;
     return NextResponse.json({ ok: true, facets, state });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });
+    return sanitizeError(err, "Request");
   }
 }

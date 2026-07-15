@@ -100,7 +100,8 @@ interface OrderResult {
   customer_email: string;
   status: string;
   product_sku: string | string[];
-  total_usd: number;
+  total: number;
+  currency_iso: string;
   created_at: string;
 }
 
@@ -248,10 +249,16 @@ export function ImeiLookup() {
 
   const isValid = /^\d{15}$/.test(imei.trim());
 
+  // Monotonic id so a second IMEI lookup's slower responses can't paint the
+  // previous device's status/orders/usage into the new device's panels
+  const lookupSeqRef = useRef(0);
+
   const doLookup = () => {
     const trimmed = imei.trim();
     if (!isValid) return;
     setSearched(true);
+    const seq = ++lookupSeqRef.current;
+    const stale = () => seq !== lookupSeqRef.current;
 
     // 1. Terminal status
     setTermLoading(true);
@@ -265,14 +272,15 @@ export function ImeiLookup() {
     })
       .then((r) => r.json())
       .then((d) => {
+        if (stale()) return;
         if (!d.ok) setTermError(d.error || "Failed to fetch terminal status");
         else {
           setTermData(d.terminal ?? null);
           setTermAllData(d.allData ?? null);
         }
       })
-      .catch((e: Error) => setTermError(e.message))
-      .finally(() => setTermLoading(false));
+      .catch((e: Error) => { if (!stale()) setTermError(e.message); })
+      .finally(() => { if (!stale()) setTermLoading(false); });
 
     // 2. Device info + offers (single call — device-info returns offers alongside binding)
     setDevLoading(true);
@@ -288,6 +296,7 @@ export function ImeiLookup() {
     })
       .then((r) => r.json())
       .then((d) => {
+        if (stale()) return;
         if (!d.ok) {
           setDevError(d.error || "Failed to fetch device info");
           setOffError(d.error || "Failed to fetch offers");
@@ -297,10 +306,12 @@ export function ImeiLookup() {
         }
       })
       .catch((e: Error) => {
+        if (stale()) return;
         setDevError(e.message);
         setOffError(e.message);
       })
       .finally(() => {
+        if (stale()) return;
         setDevLoading(false);
         setOffLoading(false);
       });
@@ -316,20 +327,21 @@ export function ImeiLookup() {
     })
       .then((r) => r.json())
       .then((d) => {
+        if (stale()) return;
         if (!d.ok) setDetError(d.error || "Failed to fetch device detail");
         else setDetData(d.detail ?? null);
       })
-      .catch((e: Error) => setDetError(e.message))
-      .finally(() => setDetLoading(false));
+      .catch((e: Error) => { if (!stale()) setDetError(e.message); })
+      .finally(() => { if (!stale()) setDetLoading(false); });
 
     // 4. Orders (search by IMEI)
     setOrdLoading(true);
     setOrdError(null);
     setOrdData([]);
     fetchOS("/api/opensearch/search", { query: trimmed })
-      .then((d) => setOrdData(d.results ?? []))
-      .catch((e: Error) => setOrdError(e.message))
-      .finally(() => setOrdLoading(false));
+      .then((d) => { if (!stale()) setOrdData(d.results ?? []); })
+      .catch((e: Error) => { if (!stale()) setOrdError(e.message); })
+      .finally(() => { if (!stale()) setOrdLoading(false); });
 
     // 5. Data usage (UCL CDR from OpenSearch)
     setUsageLoading(true);
@@ -342,6 +354,7 @@ export function ImeiLookup() {
       to: new Date().toISOString(),
     })
       .then((d) => {
+        if (stale()) return;
         const records =
           d.cdr?.ucl?.records ||
           d.cdr?.dailyConsumption?.records ||
@@ -350,8 +363,8 @@ export function ImeiLookup() {
           [];
         setUsageData(records);
       })
-      .catch((e: Error) => setUsageError(e.message))
-      .finally(() => setUsageLoading(false));
+      .catch((e: Error) => { if (!stale()) setUsageError(e.message); })
+      .finally(() => { if (!stale()) setUsageLoading(false); });
 
     // 6. Connection log (UCL activity stream — last 30 days)
     setCdrLoading(true);
@@ -364,11 +377,12 @@ export function ImeiLookup() {
     })
       .then((r) => r.json())
       .then((d) => {
+        if (stale()) return;
         if (!d.ok) setCdrError(d.error || "Failed to fetch connection log");
         else setCdrData(d.entries ?? []);
       })
-      .catch((e: Error) => setCdrError(e.message))
-      .finally(() => setCdrLoading(false));
+      .catch((e: Error) => { if (!stale()) setCdrError(e.message); })
+      .finally(() => { if (!stale()) setCdrLoading(false); });
   };
 
   const resolved = getSapphireDeviceName({
@@ -549,8 +563,8 @@ export function ImeiLookup() {
                         {Array.isArray(o.product_sku)
                           ? o.product_sku.join(", ")
                           : o.product_sku}
-                        {o.total_usd != null &&
-                          ` · $${Number(o.total_usd).toFixed(2)}`}
+                        {o.total != null &&
+                          ` · ${Number(o.total).toFixed(2)}${o.currency_iso ? ` ${o.currency_iso.toUpperCase()}` : ""}`}
                       </p>
                     </div>
                     <span className="shrink-0 ml-2 text-[11px] font-[460] text-muted-foreground">

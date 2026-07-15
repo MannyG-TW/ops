@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { queryOS } from "@/lib/opensearch-client";
 import { resolveOpenSearchCredentials } from "@/lib/server-credentials";
 import { INDEX_ORDERS } from "@/lib/opensearch-indices";
 
 /**
  * Get all orders for a customer by email.
- * POST body: { email: string, credentials: { url, username, password }, size?: number }
+ * POST body: { email: string, size?: number }.
+ * OpenSearch credentials are read server-side from the DB (never the body).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -42,13 +44,17 @@ export async function POST(req: NextRequest) {
       ...hit._source as Record<string, unknown>,
     })) || [];
 
-    // Extract customer info from the first order
+    // Extract customer info from the first order. The index stores a single
+    // customer_name field (no first/last split), so derive both from it.
     const firstOrder = orders[0];
+    const rawName = String(firstOrder?.customer_name || "").trim();
+    const nameParts = rawName.split(/\s+/).filter(Boolean);
     const customer = firstOrder
       ? {
           email: firstOrder.customer_email,
-          firstName: firstOrder.customer_first_name,
-          lastName: firstOrder.customer_last_name,
+          name: rawName,
+          firstName: nameParts[0] || "",
+          lastName: nameParts.slice(1).join(" "),
           totalOrders: result.hits?.total?.value || 0,
         }
       : null;
@@ -60,7 +66,6 @@ export async function POST(req: NextRequest) {
       total: result.hits?.total?.value || 0,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return sanitizeError(err, "OpenSearch");
   }
 }

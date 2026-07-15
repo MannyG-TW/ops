@@ -1,3 +1,11 @@
+> ⚠️ **Stale / wrong repo.** This file describes a separate Python "eSIM pricing
+> agent" project (`esim_pricing_agent.py`, `.tellisim-pricing/`, `total_usd`
+> revenue fields). None of it exists in this Next.js ops tool and the commands
+> here will not run. To test *this* app: start the dev server with
+> `./scripts/start.sh` (port 5000) and exercise the UI in the browser, or hit the
+> API routes directly (e.g. `curl -XPOST localhost:5000/api/opensearch/search -d '{"query":"TWUS-269396"}'`).
+> Retained only for historical reference; do not follow it for ops_page.
+
 # How to Test the New v2.0 Features
 
 ## 📦 Understanding Your Data Plans

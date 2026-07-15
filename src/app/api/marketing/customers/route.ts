@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { searchCustomers } from "@/lib/marketing/query";
 import { marketingForbidden } from "@/lib/marketing/guard";
 
@@ -13,6 +14,6 @@ export async function GET(req: NextRequest) {
     const results = searchCustomers(q, { variants, limit });
     return NextResponse.json({ ok: true, results, total: results.length });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });
+    return sanitizeError(err, "Request");
   }
 }

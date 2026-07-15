@@ -35,22 +35,24 @@ export function getServerTelliSIMCredentials(): TelliSIMCredentials | null {
 }
 
 /**
- * Resolve OpenSearch credentials for a request: prefer request body (legacy
- * localStorage-driven path), fall back to the DB. Lets us migrate gradually
- * without breaking existing client call-sites.
+ * Resolve OpenSearch credentials for a request. The request body is
+ * deliberately ignored: honoring a client-supplied url/username/password lets
+ * any caller point the server at an arbitrary host (SSRF). No client sends
+ * body credentials anymore (see settings-client.ts), so the DB is the only
+ * source. The unused parameter keeps legacy call-sites compiling.
  */
-export function resolveOpenSearchCredentials(body: { credentials?: unknown }): OpenSearchCredentials | null {
-  const c = body?.credentials as Partial<OpenSearchCredentials> | undefined;
-  if (c?.url && c.username && c.password) {
-    return { url: c.url, username: c.username, password: c.password };
-  }
+export function resolveOpenSearchCredentials(_body?: unknown): OpenSearchCredentials | null {
   return getServerOpenSearchCredentials();
 }
 
-export function resolveTelliSIMCredentials(body: { credentials?: unknown }): TelliSIMCredentials | null {
-  const c = body?.credentials as Partial<TelliSIMCredentials> | undefined;
-  if (c?.apiKey) {
-    return { baseUrl: c.baseUrl || "", apiKey: c.apiKey, orgId: c.orgId || "" };
-  }
+/**
+ * Resolve TelliSIM credentials for a request. Like OpenSearch, the request body
+ * is ignored: a client-supplied baseUrl would let any caller point the server at
+ * an arbitrary host (SSRF) whenever the DB row is unset. Data routes always use
+ * the DB. (The Settings "test connection" route reads body creds directly by
+ * design, before they are saved — that is a separate, intentional surface.)
+ * The unused parameter keeps legacy call-sites compiling.
+ */
+export function resolveTelliSIMCredentials(_body?: unknown): TelliSIMCredentials | null {
   return getServerTelliSIMCredentials();
 }

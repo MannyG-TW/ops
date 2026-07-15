@@ -96,11 +96,12 @@ export async function migrateSettingsToServer(): Promise<void> {
  * longer needs to attach them. Kept as a thin wrapper so existing call-sites
  * don't change shape.
  */
-export async function fetchOS(endpoint: string, body: Record<string, unknown> = {}) {
+export async function fetchOS(endpoint: string, body: Record<string, unknown> = {}, signal?: AbortSignal) {
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));

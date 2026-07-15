@@ -17,10 +17,10 @@ interface CancelOrder {
   id: string;
   order_number?: string;
   customer_email?: string;
-  customer_first_name?: string;
-  customer_last_name?: string;
+  // Real orders-index fields: single customer_name, currency is currency_iso
+  customer_name?: string;
   total?: number;
-  currency?: string;
+  currency_iso?: string;
 }
 
 interface CancelDialogProps {
@@ -50,9 +50,7 @@ export function CancelDialog({ open, onClose, order, agentName, agentId }: Cance
   if (!open) return null;
 
   const orderLabel = order.order_number || order.id || "N/A";
-  const customerName = [order.customer_first_name, order.customer_last_name]
-    .filter(Boolean)
-    .join(" ") || order.customer_email || "Customer";
+  const customerName = order.customer_name?.trim() || order.customer_email || "Customer";
 
   function handleClose() {
     setReason("");
@@ -117,7 +115,8 @@ export function CancelDialog({ open, onClose, order, agentName, agentId }: Cance
                   <span className="font-[600]">{customerName}</span> — Order {orderLabel}
                   {order.total != null && (
                     <span className="ml-1">
-                      ({order.currency || "USD"} {order.total.toFixed(2)})
+                      ({order.total.toFixed(2)}
+                      {order.currency_iso ? ` ${order.currency_iso.toUpperCase()}` : ""})
                     </span>
                   )}
                 </p>

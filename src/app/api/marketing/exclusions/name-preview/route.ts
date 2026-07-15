@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { db } from "@/lib/db";
 import { marketingCustomerSegments as MCS } from "@/lib/db/schema";
 import { buildMatcher } from "@/lib/marketing/exclusions";
@@ -31,6 +32,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true, isEmail, words, count: matched.length, sample: matched.slice(0, 25) });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });
+    return sanitizeError(err, "Request");
   }
 }

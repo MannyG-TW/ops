@@ -659,11 +659,16 @@ export default function CustomerProfilePage() {
   const role = typeof window !== "undefined" ? getCurrentRole() : "agent";
 
   useEffect(() => {
+    // Guard against navigating to a different customer while this load is in
+    // flight — otherwise the previous customer's orders/profile could paint
+    // under the new customer's header.
+    let cancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
       try {
         const data = await fetchOS("/api/opensearch/customer", { email: customerEmail });
+        if (cancelled) return;
         if (data.ok) {
           const loadedOrders: Order[] = data.orders || [];
           setOrders(loadedOrders);
@@ -683,17 +688,23 @@ export default function CustomerProfilePage() {
           setError(data.error || "Failed to load orders");
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load");
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     load();
+    return () => {
+      cancelled = true;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerEmail, targetOrderNumber]);
 
   // Auto-select serial from URL param after order loads (eSIM ICCID from search)
   const autoSerialTriggered = useRef(false);
+  // Monotonic id so a slow service-data load for a previous serial can't apply
+  // its results (or enable a cross-serial suspend) after a newer serial is picked
+  const serviceReqRef = useRef(0);
   useEffect(() => {
     if (autoSerialTriggered.current || !targetSerial || !selectedOrder || loading) return;
     const serials = getSerials(selectedOrder);
@@ -708,6 +719,7 @@ export default function CustomerProfilePage() {
 
   const loadServiceData = useCallback(async (serial: string, forceRefresh = false) => {
     setSelectedSerial(serial);
+    const reqId = ++serviceReqRef.current;
 
     // Check cache (keyed by serial + dateRange)
     const cacheKey = `${serial}__${dateRange}`;
@@ -796,9 +808,11 @@ export default function CustomerProfilePage() {
       fetchStepsRef.current[idx] = { ...fetchStepsRef.current[idx], status: "loading" };
       setFetchSteps([...fetchStepsRef.current]);
       const t0 = Date.now();
+      // Skip step updates from a superseded load — otherwise a stale request's
+      // callbacks would mutate the current load's shared step array/checklist.
       return p.then(
-        (v) => { fetchStepsRef.current[idx] = { ...fetchStepsRef.current[idx], status: "done", durationMs: Date.now() - t0 }; setFetchSteps([...fetchStepsRef.current]); return v; },
-        (e) => { fetchStepsRef.current[idx] = { ...fetchStepsRef.current[idx], status: "error", error: e?.message || "Failed", durationMs: Date.now() - t0 }; setFetchSteps([...fetchStepsRef.current]); throw e; }
+        (v) => { if (reqId === serviceReqRef.current) { fetchStepsRef.current[idx] = { ...fetchStepsRef.current[idx], status: "done", durationMs: Date.now() - t0 }; setFetchSteps([...fetchStepsRef.current]); } return v; },
+        (e) => { if (reqId === serviceReqRef.current) { fetchStepsRef.current[idx] = { ...fetchStepsRef.current[idx], status: "error", error: e?.message || "Failed", durationMs: Date.now() - t0 }; setFetchSteps([...fetchStepsRef.current]); } throw e; }
       );
     };
 
@@ -943,26 +957,33 @@ export default function CustomerProfilePage() {
         }
       }
     } catch (err) {
-      setServiceError(err instanceof Error ? err.message : "Failed to load service data");
+      if (reqId === serviceReqRef.current) {
+        setServiceError(err instanceof Error ? err.message : "Failed to load service data");
+      }
     } finally {
-      // Apply results + populate cache
-      setCdrRecords(out.cdrRecords);
-      setCdrTotal(out.cdrTotal);
-      setCdrError(out.cdrError);
-      setDeviceInfo(out.deviceInfo);
-      setDeviceInfoError(out.deviceInfoError);
-      setUserOffers(out.userOffers);
-      setPlanAttachments(out.planAttachments);
-      setSmdpData(out.smdpData);
-      setLpa(out.lpa);
-      setLocationData(out.locationData);
-      setIccidOrders(out.iccidOrders);
-      setTerminalStatus(out.terminalStatus);
-      setTerminalStatusCachedAt(out.terminalStatusCachedAt);
-      const nowTs = Date.now();
-      serviceCacheRef.current[cacheKey] = { ts: nowTs, ...out };
-      setServiceCachedAt(nowTs);
-      setServiceLoading(false);
+      // Only the latest request applies state AND writes the cache. Guarding the
+      // cache write too prevents a stale same-key load that finishes out of
+      // order from clobbering a newer, good cache entry (which would then be
+      // served for the 15-min TTL).
+      if (reqId === serviceReqRef.current) {
+        const nowTs = Date.now();
+        serviceCacheRef.current[cacheKey] = { ts: nowTs, ...out };
+        setCdrRecords(out.cdrRecords);
+        setCdrTotal(out.cdrTotal);
+        setCdrError(out.cdrError);
+        setDeviceInfo(out.deviceInfo);
+        setDeviceInfoError(out.deviceInfoError);
+        setUserOffers(out.userOffers);
+        setPlanAttachments(out.planAttachments);
+        setSmdpData(out.smdpData);
+        setLpa(out.lpa);
+        setLocationData(out.locationData);
+        setIccidOrders(out.iccidOrders);
+        setTerminalStatus(out.terminalStatus);
+        setTerminalStatusCachedAt(out.terminalStatusCachedAt);
+        setServiceCachedAt(nowTs);
+        setServiceLoading(false);
+      }
     }
   }, [dateRange, selectedOrder]);
 
@@ -2340,7 +2361,7 @@ export default function CustomerProfilePage() {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
               <SummaryField label="Purchased" value={formatDate(selectedOrder.created_at)} />
               <SummaryField label="Country" value={(() => {
-                if (selectedOrder.destination_country) return getCountryName(selectedOrder.destination_country);
+                // No destination_country in the orders index — derive from the SKU
                 const parsed = parsePlanSku(packageSku || planSku || "");
                 if (parsed?.countryName) return parsed.countryName;
                 return "—";
@@ -2352,7 +2373,7 @@ export default function CustomerProfilePage() {
               <SummaryField
                 label="USD Value"
                 value={(() => {
-                  if (selectedOrder.total_usd) return `$${Number(selectedOrder.total_usd).toFixed(2)}`;
+                  // No total_usd in the index — convert via the stored rate
                   if (selectedOrder.total != null && selectedOrder.order_usd_rate_exchange) {
                     const rate = parseFloat(selectedOrder.order_usd_rate_exchange);
                     if (rate > 0) return `$${(Number(selectedOrder.total) / rate).toFixed(2)}`;

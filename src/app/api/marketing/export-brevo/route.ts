@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { buildBrevoCsv } from "@/lib/marketing/brevo";
 import { marketingForbidden } from "@/lib/marketing/guard";
 
@@ -28,6 +29,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });
+    return sanitizeError(err, "Request");
   }
 }

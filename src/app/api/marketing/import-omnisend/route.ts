@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { Readable } from "stream";
 import { createWriteStream } from "fs";
 import { unlink } from "fs/promises";
@@ -35,8 +36,7 @@ export async function POST(req: NextRequest) {
     const result = importOmnisendFile(tmpPath);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return sanitizeError(err, "Request");
   } finally {
     await unlink(tmpPath).catch(() => {});
   }

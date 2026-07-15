@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { queryOS } from "@/lib/opensearch-client";
 import { resolveOpenSearchCredentials } from "@/lib/server-credentials";
 import { INDEX_ORDERS } from "@/lib/opensearch-indices";
 
 /**
  * Get a single order by order_number or document ID.
- * POST body: { credentials: { url, username, password } }
+ * OpenSearch credentials are read server-side from the DB (never the body).
  */
 export async function POST(
   req: NextRequest,
@@ -24,7 +25,7 @@ export async function POST(
       query: {
         bool: {
           should: [
-            { term: { "order_number.keyword": id } },
+            { term: { "order_number.keyword": { value: id, case_insensitive: true } } },
             { term: { _id: id } },
           ],
           minimum_should_match: 1,
@@ -44,7 +45,6 @@ export async function POST(
       order: { id: hit._id, ...hit._source },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return sanitizeError(err, "OpenSearch");
   }
 }

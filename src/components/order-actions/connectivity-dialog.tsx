@@ -22,7 +22,6 @@ interface ConnectivityOrder {
   id: string;
   order_number?: string;
   customer_email?: string;
-  destination_country?: string;
 }
 
 interface ConnectivityDialogProps {
@@ -68,6 +67,7 @@ export function ConnectivityDialog({
   const [selectedCountry, setSelectedCountry] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Determine if plan is single-country or regional/global
   const parsed = useMemo(() => planSku ? parsePlanSku(planSku) : null, [planSku]);
@@ -81,11 +81,16 @@ export function ConnectivityDialog({
 
   // Resolved country: single-country from SKU, or agent-selected for regional/global
   const country = isSingleCountry
-    ? parsed?.countryCode ?? order.destination_country?.toUpperCase().slice(0, 2) ?? ""
+    ? parsed?.countryCode ?? ""
     : selectedCountry;
 
   useEffect(() => {
     if (!open || !iccid) return;
+
+    // Guard against the dialog reopening on a different ICCID (or unmounting)
+    // while this fetch is in flight — otherwise the previous ICCID's snapshot
+    // would render and could be submitted into the connectivity report.
+    let cancelled = false;
 
     setTelliSimData(null);
     setTelliSimError(false);
@@ -96,6 +101,7 @@ export function ConnectivityDialog({
       fetchTelliSIM(`/api/tellisim/location/${iccid}`, {}),
     ])
       .then(([subData, locData]) => {
+        if (cancelled) return;
         const snapshot: TelliSimSnapshot = {
           iccid,
           imei: subData?.imei || locData?.imei,
@@ -111,11 +117,15 @@ export function ConnectivityDialog({
         setTelliSimData(snapshot);
       })
       .catch(() => {
-        setTelliSimError(true);
+        if (!cancelled) setTelliSimError(true);
       })
       .finally(() => {
-        setTelliSimLoading(false);
+        if (!cancelled) setTelliSimLoading(false);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, iccid]);
 
   if (!open) return null;
@@ -128,6 +138,7 @@ export function ConnectivityDialog({
     setSelectedCountry("");
     setLoading(false);
     setSuccess(false);
+    setSubmitError(null);
     setTelliSimData(null);
     setTelliSimError(false);
     onClose();
@@ -135,8 +146,9 @@ export function ConnectivityDialog({
 
   async function handleSubmit() {
     setLoading(true);
+    setSubmitError(null);
     try {
-      await fetch("/api/reports/connectivity", {
+      const res = await fetch("/api/reports/connectivity", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -151,11 +163,19 @@ export function ConnectivityDialog({
           reportedById: agentId,
         }),
       });
+      const data = await res.json().catch(() => ({}));
+      // Don't report success on a 4xx/5xx — the report was not written.
+      if (!res.ok || data.ok === false) {
+        setSubmitError(data.error || `Report failed (${res.status})`);
+        setLoading(false);
+        return;
+      }
       setSuccess(true);
       setTimeout(() => {
         handleClose();
       }, 1500);
     } catch {
+      setSubmitError("Report request failed — please retry.");
       setLoading(false);
     }
   }
@@ -276,7 +296,7 @@ export function ConnectivityDialog({
                   </div>
                 ) : (
                   <p className="text-[12px] font-[460] text-charcoal">
-                    <span className="font-[600]">Destination:</span> {order.destination_country || "Unknown"}
+                    <span className="font-[600]">Destination:</span> {country || "Unknown"}
                     {order.customer_email && (
                       <span className="ml-2 text-muted-foreground">— {order.customer_email}</span>
                     )}
@@ -314,6 +334,10 @@ export function ConnectivityDialog({
                 />
               </div>
 
+              {submitError && (
+                <p className="text-[12px] font-[540] text-fraud-red">{submitError}</p>
+              )}
+
               <div className="flex justify-end gap-2">
                 <Button
                   onClick={handleClose}
@@ -324,7 +348,7 @@ export function ConnectivityDialog({
                 </Button>
                 <Button
                   onClick={handleSubmit}
-                  disabled={!reason || (needsCountrySelection && !selectedCountry) || loading}
+                  disabled={!reason || !country || (needsCountrySelection && !selectedCountry) || loading}
                   className="rounded-[8px] bg-amethyst text-white text-[13px] font-[600] hover:bg-amethyst/90 disabled:opacity-40 cursor-pointer"
                 >
                   {loading ? "Reporting…" : "Report Issue"}

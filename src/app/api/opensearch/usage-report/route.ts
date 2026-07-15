@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { queryOS } from "@/lib/opensearch-client";
 import { resolveOpenSearchCredentials } from "@/lib/server-credentials";
 
@@ -148,16 +149,48 @@ export async function POST(req: NextRequest) {
     if (!imeis || !Array.isArray(imeis) || imeis.length === 0) {
       return NextResponse.json({ ok: false, error: "IMEIs array required" }, { status: 400 });
     }
-    if (!from || !to) {
-      return NextResponse.json({ ok: false, error: "Date range (from, to) required" }, { status: 400 });
+    // Validate date shape and range before they reach the index-pattern
+    // builder — a malformed date yields an empty index pattern (which would
+    // fan a query across the whole cluster) and a silently all-zero report.
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+    if (typeof from !== "string" || typeof to !== "string" || !DATE_RE.test(from) || !DATE_RE.test(to)) {
+      return NextResponse.json({ ok: false, error: "from and to must be YYYY-MM-DD dates" }, { status: 400 });
+    }
+    const fromMs = Date.parse(`${from}T00:00:00Z`);
+    const toMs = Date.parse(`${to}T00:00:00Z`);
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+      return NextResponse.json({ ok: false, error: "from or to is not a valid date" }, { status: 400 });
+    }
+    // Reject nonexistent calendar dates: Date.parse("2026-02-30") silently rolls
+    // over to Mar 2, which would query dates the caller never asked for.
+    if (
+      new Date(fromMs).toISOString().slice(0, 10) !== from ||
+      new Date(toMs).toISOString().slice(0, 10) !== to
+    ) {
+      return NextResponse.json({ ok: false, error: "from or to is not a real calendar date" }, { status: 400 });
+    }
+    if (fromMs > toMs) {
+      return NextResponse.json({ ok: false, error: "from must be on or before to" }, { status: 400 });
+    }
+    const MAX_RANGE_DAYS = 92;
+    if ((toMs - fromMs) / 86_400_000 > MAX_RANGE_DAYS) {
+      return NextResponse.json({ ok: false, error: `Date range too large (max ${MAX_RANGE_DAYS} days)` }, { status: 400 });
     }
 
     const dates = buildDateList(from, to);
     const validDates = new Set(dates);
     const indexPattern = buildIndexPattern(from, to, noonToNoon);
+    if (!indexPattern) {
+      return NextResponse.json({ ok: false, error: "Empty date range" }, { status: 400 });
+    }
 
-    // Deduplicate IMEIs
-    const uniqueImeis = [...new Set(imeis.map((i: string) => i.trim()).filter(Boolean))];
+    // Deduplicate IMEIs (guarding against non-string entries)
+    const uniqueImeis = [...new Set(
+      imeis.filter((i): i is string => typeof i === "string").map((i) => i.trim()).filter(Boolean)
+    )];
+    if (uniqueImeis.length === 0) {
+      return NextResponse.json({ ok: false, error: "No valid IMEIs provided" }, { status: 400 });
+    }
 
     // Query in batches
     const allData: Record<string, Record<string, number>> = {};
@@ -219,7 +252,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return sanitizeError(err, "OpenSearch");
   }
 }

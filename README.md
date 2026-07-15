@@ -65,8 +65,10 @@ src/app/api/**           ← route handlers (credentials attached server-side)
 
 **Credential resolution** — `src/lib/server-credentials.ts` reads OpenSearch /
 TelliSIM / UCL credentials from SQLite (`ops.sqlite`) so server routes and
-scheduled jobs work without the browser. Requests may also pass credentials in
-the body (legacy localStorage path); the server prefers the body, then the DB.
+scheduled jobs work without the browser. OpenSearch always uses the DB values;
+request-body credentials are ignored (that path was removed to close an SSRF
+hole). TelliSIM/UCL still accept a body credential only as a fallback when the
+DB row is unset, and never let the body override a configured server URL.
 
 **Data sources**
 - **OpenSearch** is the system of record for orders and CDRs (Call Detail Records /

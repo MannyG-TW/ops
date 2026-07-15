@@ -22,41 +22,34 @@
 
 ### Where credentials live
 
-Credentials are stored in `config.yaml` at the repo root (never committed — see `config.yaml.example` for the key names). The support portal backend reads this file automatically. You do **not** need to touch it unless you are setting up a new environment.
+OpenSearch credentials (URL, username, password) are stored in the app's SQLite
+database (`data/ops.sqlite`, table `opensearch_config`, row id `default`). You
+set them once through the in-app **Settings → OpenSearch** page; there is no
+`config.yaml`. Server routes read them via
+`resolveOpenSearchCredentials()` in `src/lib/server-credentials.ts`, which
+**always** uses the DB — request bodies can no longer supply credentials
+(that path was removed to close an SSRF hole).
 
-```yaml
-# config.yaml.example — structure only, no real values
-opensearch:
-  host: "your-opensearch-host.us-east-1.es.amazonaws.com"
-  port: 443
-  username: "your-username"
-  password: "your-password"
+### Node client (canonical pattern)
+
+Server-side queries go through `queryOS()` in `src/lib/opensearch-client.ts`.
+Copy it when writing a one-off script:
+
+```ts
+import { queryOS } from "@/lib/opensearch-client";
+import { getServerOpenSearchCredentials } from "@/lib/server-credentials";
+import { INDEX_ORDERS } from "@/lib/opensearch-indices";
+
+const creds = getServerOpenSearchCredentials(); // { url, username, password } from SQLite
+const result = await queryOS(creds!, INDEX_ORDERS, {
+  size: 1,
+  query: { term: { "order_number.keyword": { value: "TWUS-269396", case_insensitive: true } } },
+});
 ```
 
-### Python client constructor (canonical pattern)
-
-Every service in the codebase uses this exact constructor. Copy it when writing one-off scripts or debugging outside the portal. Replace the placeholder strings with values from `config.yaml`.
-
-```python
-from opensearchpy import OpenSearch
-
-client = OpenSearch(
-    hosts=[{
-        "host": "<opensearch.host from config.yaml>",
-        "port": 443,                   # opensearch.port, always 443 in production
-    }],
-    http_auth=(
-        "<opensearch.username>",       # opensearch.username
-        "<opensearch.password>",       # opensearch.password — never hardcode
-    ),
-    use_ssl=True,
-    verify_certs=True,
-    ssl_show_warn=False,
-    timeout=120,                       # 30 for interactive queries; 120 for aggregations
-)
-```
-
-Source: `api/services/cdr_query_service.py` lines 59–72 and `api/routes/admin.py` lines 657–661.
+For quick shell probes, read the same row directly:
+`sqlite3 data/ops.sqlite "select url, username, password from opensearch_config"`
+and `curl -u user:pass "$URL/orders/_search" ...`.
 
 ### VPN requirement
 
@@ -142,19 +135,19 @@ This table documents every field that the codebase reads from an orders document
 
 | Field | Type | Example value | Meaning | Notes |
 |---|---|---|---|---|
-| `order_number` | keyword | `"TWUS-269396"` | Human-readable order ID shown to customers and in the UI | Primary lookup field for order ID searches. Always try `order_number.keyword` first. |
-| `order_id` | keyword | `"TWUS-269396"` | Alternate order ID field | Some older orders use this instead of `order_number`. The code falls back: `src.get("order_number") or src.get("order_id") or hit["_id"]` |
-| `number` | integer | `269396` | Numeric-only order number | Used as a fallback when the search value is all digits. |
-| `_id` | string | `"abc123xyz"` | OpenSearch internal document ID | Last-resort fallback if both `order_number` and `order_id` are missing. |
+| `order_number` | keyword | `"TWUS-269396"` | Human-readable order ID shown to customers and in the UI | Primary lookup field. Values are **uppercase** `PREFIX-digits`; query `order_number.keyword` with `case_insensitive: true` so pasted lowercase input still matches. |
+| `number` | integer | `269396` | Numeric-only order number | Digits only, no prefix. |
+| `_id` | string | `"nvm:1912"` | OpenSearch internal document ID | Fallback lookup when `order_number` doesn't match (`src/app/api/opensearch/orders/[id]/route.ts` tries `order_number.keyword` then `_id`). |
+
+> **No `order_id` field.** Earlier drafts of this doc listed an `order_id` field; it does **not** exist in the live mapping. Use `order_number` (or `_id`).
 
 ### 3.2 Customer identity fields
 
 | Field | Type | Example value | Meaning | Notes |
 |---|---|---|---|---|
 | `customer_email` | text + keyword | `"jane.doe@gmail.com"` | Customer email address | Case varies in production. Always search both original case and `.lower()`. Use `customer_email.keyword` for exact match, `customer_email` (text) for match fallback. See [Gotchas §7.3](#73-customer_email-case-sensitivity). |
-| `customer_name` | text | `"Jane Doe"` | Customer full name | Not indexed as keyword in most queries. Use for display only, not lookup. |
-
-> **Phone number:** Phone numbers are **not stored** in the `orders` index and are not present in any other OpenSearch index. There is no phone-number lookup path. See [Query Recipes §6.5](#65-phone-number-lookup).
+| `customer_name` | text + keyword | `"Jane Doe"` | Customer full name (single field — there is **no** `customer_first_name`/`customer_last_name`) | Split client-side if you need first/last. Also queried as a name-search fallback. |
+| `customer_phone` | text + keyword | `"+15125550123"` | Customer phone number | Present in the mapping but often empty; no dedicated lookup route today. |
 
 ### 3.3 SIM / ICCID fields
 
@@ -238,7 +231,9 @@ price_usd = order_total / usd_rate if order_total > 0 else 0
 |---|---|---|---|---|
 | `sales_chanel` | keyword | `"web"` | Sales channel | **Misspelled in OS** (missing second `n`). Always use `sales_chanel` not `sales_channel`. See [Gotchas §7.4](#74-misspelled-sales_chanel-field). |
 | `system` | keyword | `"TWUS"` | Brand/system identifier | `TWUS` = TravelWifi US, `TWEU` = TravelWifi Europe, `NV` = Nomad Ventures, etc. |
-| `destination_country` | keyword | `"DE"` | Destination country ISO2 | Used for demand aggregations. Not always present on topup orders. |
+| `currency_iso` | keyword | `"USD"` | Order currency ISO code | Pair with `total`. There is **no** `currency` or `total_usd` field — convert via `order_usd_rate_exchange` for a USD figure. |
+
+> **No `destination_country` field.** It is not in the live mapping; derive the destination from the plan SKU (`parsePlanSku`) instead.
 
 ### 3.8 Coupon and discount fields
 

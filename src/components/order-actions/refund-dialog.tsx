@@ -18,12 +18,12 @@ interface RefundOrder {
   id: string;
   order_number?: string;
   customer_email?: string;
-  customer_first_name?: string;
-  customer_last_name?: string;
+  // Real orders-index fields (raw _source from /api/opensearch/customer).
+  // customer_name is a single field; currency is currency_iso; there is no
+  // total_usd / destination_country in the index.
+  customer_name?: string;
   total?: number;
-  total_usd?: number;
-  currency?: string;
-  destination_country?: string;
+  currency_iso?: string;
 }
 
 interface RefundDialogProps {
@@ -51,20 +51,19 @@ export function RefundDialog({ open, onClose, order, agentName, agentId }: Refun
   const [refundType, setRefundType] = useState<RefundType>("full");
   const [amount, setAmount] = useState(String(order.total ?? ""));
   const [reason, setReason] = useState("");
-  const [country, setCountry] = useState(order.destination_country?.toUpperCase().slice(0, 2) ?? "");
+  // No order-level country field exists in the index; operator selects it
+  const [country, setCountry] = useState("");
   const [notes, setNotes] = useState("");
   const [step, setStep] = useState<Step>("form");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   if (!open) return null;
 
   const orderLabel = order.order_number || order.id || "N/A";
-  const customerName =
-    [order.customer_first_name, order.customer_last_name].filter(Boolean).join(" ") ||
-    order.customer_email ||
-    "Customer";
-  const currency = order.currency || "USD";
+  const customerName = order.customer_name?.trim() || order.customer_email || "Customer";
+  const currency = order.currency_iso || "USD";
   const orderTotal = order.total ?? 0;
   const displayAmount = refundType === "full" ? orderTotal.toFixed(2) : amount;
 
@@ -72,11 +71,12 @@ export function RefundDialog({ open, onClose, order, agentName, agentId }: Refun
     setRefundType("full");
     setAmount(String(order.total ?? ""));
     setReason("");
-    setCountry(order.destination_country?.toUpperCase().slice(0, 2) ?? "");
+    setCountry("");
     setNotes("");
     setStep("form");
     setLoading(false);
     setSuccess(false);
+    setSubmitError(null);
     onClose();
   }
 
@@ -89,8 +89,9 @@ export function RefundDialog({ open, onClose, order, agentName, agentId }: Refun
 
   async function handleConfirm() {
     setLoading(true);
+    setSubmitError(null);
     try {
-      await fetch("/api/reports/refund", {
+      const res = await fetch("/api/reports/refund", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -107,16 +108,29 @@ export function RefundDialog({ open, onClose, order, agentName, agentId }: Refun
           processedById: agentId,
         }),
       });
+      const data = await res.json().catch(() => ({}));
+      // Don't report success on a 4xx/5xx — the report was not written.
+      if (!res.ok || data.ok === false) {
+        setSubmitError(data.error || `Refund failed (${res.status})`);
+        setLoading(false);
+        return;
+      }
       setSuccess(true);
       setTimeout(() => {
         handleClose();
       }, 1500);
     } catch {
+      setSubmitError("Refund request failed — please retry.");
       setLoading(false);
     }
   }
 
-  const canContinue = reason && (refundType === "full" || (amount && parseFloat(amount) > 0));
+  // Connectivity refunds also create a country-scoped connectivity report, so a
+  // valid 2-letter country is required (the API rejects it otherwise).
+  const canContinue =
+    reason &&
+    (refundType === "full" || (amount && parseFloat(amount) > 0)) &&
+    (reason !== "connectivity_issues" || country.trim().length === 2);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -278,6 +292,10 @@ export function RefundDialog({ open, onClose, order, agentName, agentId }: Refun
                   </p>
                 </div>
               </div>
+
+              {submitError && (
+                <p className="text-[12px] font-[540] text-fraud-red">{submitError}</p>
+              )}
 
               <div className="flex justify-end gap-2">
                 <Button

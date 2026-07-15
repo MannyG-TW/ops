@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { getCoverageProfiles } from "@/lib/tellisim-client";
 import { resolveTelliSIMCredentials } from "@/lib/server-credentials";
 
@@ -24,7 +25,6 @@ export async function POST(req: NextRequest) {
       coverageProfiles: data?.data ?? data,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return sanitizeError(err, "TelliSIM");
   }
 }

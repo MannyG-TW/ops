@@ -1,3 +1,7 @@
+> ⚠️ **Wrong repo.** This work log belongs to the separate "Smart Pricing" Python
+> project (`esim_pricing_agent.py`, Grok AI research), not this Next.js ops tool.
+> Its tasks and commits do not apply here. Retained for historical reference only.
+
 # Smart Pricing - Work Log & Task Tracker
 
 **Last Updated**: 2025-12-04 (OpenSearch vs RDS Data Gap Analysis)

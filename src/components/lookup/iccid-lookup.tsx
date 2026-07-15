@@ -39,7 +39,8 @@ interface OrderResult {
   customer_email: string;
   status: string;
   product_sku: string | string[];
-  total_usd: number;
+  total: number;
+  currency_iso: string;
   created_at: string;
 }
 
@@ -138,10 +139,16 @@ export function IccidLookup() {
   // Valid when 19-20 digits starting with "89"
   const isValid = /^89\d{17,18}$/.test(iccid.trim());
 
+  // Monotonic id so a second lookup's slower responses can't paint the previous
+  // ICCID's subscription / LPA / CDR into the new ICCID's panels
+  const lookupSeqRef = useRef(0);
+
   const doLookup = () => {
     const trimmed = iccid.trim();
     if (!isValid) return;
     setSearched(true);
+    const seq = ++lookupSeqRef.current;
+    const stale = () => seq !== lookupSeqRef.current;
 
     // CDR fetch — windowed by the plan's activation date so usage older than
     // 30 days still shows. A fixed 30-day window returned an empty chart even
@@ -154,6 +161,7 @@ export function IccidLookup() {
         to: new Date().toISOString(),
       })
         .then((d: AnyRecord) => {
+          if (stale()) return;
           const records =
             d.cdr?.tellisim?.records ??
             d.cdr?.archive?.records ??
@@ -162,8 +170,8 @@ export function IccidLookup() {
             [];
           setCdrRows(records as AnyRecord[]);
         })
-        .catch((e: Error) => setCdrError(e.message))
-        .finally(() => setCdrLoading(false));
+        .catch((e: Error) => { if (!stale()) setCdrError(e.message); })
+        .finally(() => { if (!stale()) setCdrLoading(false); });
     };
     const yearAgo = () =>
       new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
@@ -180,6 +188,7 @@ export function IccidLookup() {
     setCdrRows([]);
     fetchTelliSIM(`/api/tellisim/subscription/${trimmed}`)
       .then((d: AnyRecord) => {
+        if (stale()) return;
         setSubData(d);
         setSubLoading(false);
         // CDR window: 1 day before activation → now (fallback: last 365 days)
@@ -190,15 +199,16 @@ export function IccidLookup() {
         const coverageId = d?.planAttachments?.data?.[0]?.plan?.coverage_id;
         if (coverageId) {
           fetchTelliSIM(`/api/tellisim/coverage/${coverageId}`, {})
-            .then((cov: AnyRecord) => setCovData(cov))
-            .catch((e: Error) => setCovError(e.message))
-            .finally(() => setCovLoading(false));
+            .then((cov: AnyRecord) => { if (!stale()) setCovData(cov); })
+            .catch((e: Error) => { if (!stale()) setCovError(e.message); })
+            .finally(() => { if (!stale()) setCovLoading(false); });
         } else {
           setCovError("No coverage ID in plan");
           setCovLoading(false);
         }
       })
       .catch((e: Error) => {
+        if (stale()) return;
         setSubError(e.message);
         setSubLoading(false);
         setCovError("Subscription failed — cannot load coverage");
@@ -212,27 +222,27 @@ export function IccidLookup() {
     setLocError(null);
     setLocData(null);
     fetchTelliSIM(`/api/tellisim/location/${trimmed}`)
-      .then((d: AnyRecord) => setLocData(d))
-      .catch((e: Error) => setLocError(e.message))
-      .finally(() => setLocLoading(false));
+      .then((d: AnyRecord) => { if (!stale()) setLocData(d); })
+      .catch((e: Error) => { if (!stale()) setLocError(e.message); })
+      .finally(() => { if (!stale()) setLocLoading(false); });
 
     // 3. Orders
     setOrdLoading(true);
     setOrdError(null);
     setOrdData([]);
     fetchOS("/api/opensearch/search", { query: trimmed })
-      .then((d: { results?: OrderResult[] }) => setOrdData(d.results ?? []))
-      .catch((e: Error) => setOrdError(e.message))
-      .finally(() => setOrdLoading(false));
+      .then((d: { results?: OrderResult[] }) => { if (!stale()) setOrdData(d.results ?? []); })
+      .catch((e: Error) => { if (!stale()) setOrdError(e.message); })
+      .finally(() => { if (!stale()) setOrdLoading(false); });
 
     // 4. SMDP profile — state history + SIM/device details (EID, LPA)
     setSmdpLoading(true);
     setSmdpError(null);
     setSmdpData(null);
     fetchTelliSIM(`/api/tellisim/smdp/${trimmed}`)
-      .then((d: AnyRecord) => setSmdpData(d))
-      .catch((e: Error) => setSmdpError(e.message))
-      .finally(() => setSmdpLoading(false));
+      .then((d: AnyRecord) => { if (!stale()) setSmdpData(d); })
+      .catch((e: Error) => { if (!stale()) setSmdpError(e.message); })
+      .finally(() => { if (!stale()) setSmdpLoading(false); });
   };
 
   // Extract subscription fields from actual TelliSIM API response
@@ -467,8 +477,8 @@ export function IccidLookup() {
                         {Array.isArray(o.product_sku)
                           ? o.product_sku.join(", ")
                           : o.product_sku}
-                        {o.total_usd != null &&
-                          ` · $${Number(o.total_usd).toFixed(2)}`}
+                        {o.total != null &&
+                          ` · ${Number(o.total).toFixed(2)}${o.currency_iso ? ` ${o.currency_iso.toUpperCase()}` : ""}`}
                       </p>
                     </div>
                     <div className="shrink-0 ml-2 flex items-center gap-1">

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { createHash } from "crypto";
 import { db } from "@/lib/db";
 import { uclGlobalConfig } from "@/lib/db/schema";
@@ -137,6 +138,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, imei, detail: data.data });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "QueryCustomerForkf failed" });
+    return sanitizeError(err, "UCL");
   }
 }

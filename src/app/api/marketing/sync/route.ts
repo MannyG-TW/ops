@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { syncOrders } from "@/lib/marketing/sync";
 import { marketingForbidden } from "@/lib/marketing/guard";
 
@@ -17,7 +18,6 @@ export async function POST(req: NextRequest) {
     const result = await syncOrders({ months });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return sanitizeError(err, "Request");
   }
 }

@@ -74,8 +74,11 @@ From the index mapping:
 
 json
 Copy code
+// NOTE: order_number, customer_email, and serials are `text` with a `.keyword`
+// sub-field (NOT bare keyword). Exact/prefix/wildcard queries must target the
+// `.keyword` sub-field (e.g. `order_number.keyword`) — see search route.
 "properties": {
-  "order_number":           { "type": "keyword" },
+  "order_number":           { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
   "system":                 { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
   "number":                 { "type": "long" },
   "balance":                { "type": "float" },
@@ -85,14 +88,14 @@ Copy code
   "delivery_address":       { "type": "text" },
   "return_address":         { "type": "text" },
   "created_at":             { "type": "long" },
-  "customer_name":          { "type": "text" },
-  "customer_email":         { "type": "keyword" },
-  "customer_phone":         { "type": "keyword" },
+  "customer_name":          { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+  "customer_email":         { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+  "customer_phone":         { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
   "company_name":           { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
   "product_sku":            { "type": "keyword" },
   "status":                 { "type": "keyword" },
   "warehouse":              { "type": "keyword" },
-  "serials":                { "type": "keyword" },
+  "serials":                { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
   "shipping_methods":       { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
   "shipping_methods_key":   { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
   "sales_chanel":           { "type": "text", "fields": { "keyword": { "type": "keyword" } } },

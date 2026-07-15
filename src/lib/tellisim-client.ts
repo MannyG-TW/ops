@@ -10,6 +10,11 @@ export interface TelliSIMCredentials {
   orgId?: string;
 }
 
+/** Strip the `?key=…` secret from any string before it can reach a client. */
+function redactKey(s: string): string {
+  return s.replace(/key=[^&\s"']+/gi, "key=***");
+}
+
 async function telliSIMFetch(
   creds: TelliSIMCredentials,
   path: string,
@@ -17,6 +22,13 @@ async function telliSIMFetch(
   body?: Record<string, unknown>
 ) {
   const cleanUrl = (creds.baseUrl || "https://api.tellisim.com").replace(/\/$/, "");
+  // Validate the base URL up front: otherwise an invalid URL makes fetch throw
+  // a TypeError whose message embeds the full URL — including ?key=<apiKey>.
+  try {
+    new URL(cleanUrl);
+  } catch {
+    throw new Error("TelliSIM base URL is invalid — fix it in Settings");
+  }
   const separator = path.includes("?") ? "&" : "?";
   const url = `${cleanUrl}${path}${separator}key=${encodeURIComponent(creds.apiKey)}`;
 
@@ -24,19 +36,33 @@ async function telliSIMFetch(
     "Content-Type": "application/json",
   };
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(10000),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (err) {
+    // Never let a network/parse error surface the key-bearing URL
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`TelliSIM request failed: ${redactKey(msg)}`);
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`TelliSIM ${res.status}: ${text.slice(0, 300)}`);
+    throw new Error(`TelliSIM ${res.status}: ${redactKey(text.slice(0, 300))}`);
   }
 
-  return res.json();
+  try {
+    return await res.json();
+  } catch (err) {
+    // A 200 with a non-JSON body throws a SyntaxError that can echo the body;
+    // keep the key-bearing URL out of it.
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`TelliSIM response parse failed: ${redactKey(msg)}`);
+  }
 }
 
 /**

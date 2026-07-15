@@ -28,17 +28,14 @@ interface SearchResult {
   id: string;
   order_number: string;
   customer_email: string;
-  customer_first_name: string;
-  customer_last_name: string;
+  customer_name: string;
   status: string;
   system: string;
   total: number;
-  currency: string;
-  total_usd: number;
-  created_at: string;
+  currency_iso: string;
+  created_at: string | number;
   serials: string[];
-  product_sku: string;
-  destination_country: string;
+  product_sku: string | string[];
   order_details_data: unknown;
 }
 
@@ -120,8 +117,16 @@ function SearchPageContent() {
   const [lpaOriginal, setLpaOriginal] = useState<string | null>(null);
 
   const isIccidQuery = /^\d{19,20}$/.test(debouncedQuery.trim());
-  const isLpaQuery = (q: string) =>
-    q.trim().startsWith("LPA:1$") || /\$[^$]+\$[^$]+/.test(q.trim());
+  // Anchored to the SM-DP+ shape (host.tld$code) so free text that merely
+  // contains two dollar signs ("refund $19.99 not $9.99") is not hijacked
+  // into the LPA-resolution flow
+  const isLpaQuery = (q: string) => {
+    const t = q.trim();
+    return (
+      t.startsWith("LPA:1$") ||
+      /^(?:LPA:)?(?:1\$)?[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}\$[A-Za-z0-9._-]+/.test(t)
+    );
+  };
 
   // Tab state derived from URL
   const activeTab = searchParams.get("tab") || "search";
@@ -129,7 +134,6 @@ function SearchPageContent() {
   const setTab = (tab: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", tab);
-    if (tab !== "search") params.delete("q");
     router.replace(`/search?${params.toString()}`, { scroll: false });
   };
 
@@ -143,17 +147,27 @@ function SearchPageContent() {
   }, [searchParams]);
 
   const abortRef = useRef<AbortController | null>(null);
+  const lpaSeqRef = useRef(0);
+  // The last q value THIS component pushed to the URL. Lets the write effect
+  // tell its own echo apart from an external navigation (topbar/back button):
+  // if the URL holds something we didn't write, we adopt it instead of
+  // overwriting it back to a stale debounced value.
+  const lastSyncedQ = useRef(initialQuery);
 
   const doSearch = useCallback(async (term: string) => {
+    // Abort any in-flight request even when clearing the box — otherwise a
+    // slow search resolves later and flashes stale results back on screen
+    abortRef.current?.abort();
+
     if (!term.trim()) {
       setResults([]);
       setTotal(0);
       setHasSearched(false);
       setError(null);
+      setLoading(false);
       return;
     }
 
-    abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -162,7 +176,7 @@ function SearchPageContent() {
     setNotConfigured(false);
 
     try {
-      const data = await fetchOS("/api/opensearch/search", { query: term });
+      const data = await fetchOS("/api/opensearch/search", { query: term }, controller.signal);
       if (controller.signal.aborted) return;
       setResults(data.results ?? []);
       setTotal(data.total ?? 0);
@@ -186,22 +200,47 @@ function SearchPageContent() {
     }
   }, []);
 
-  // Sync URL query param
+  // Sync the settled input into the URL's q param. Preserve other params (tab)
+  // and stand down on non-search tabs. Ordering of the guards matters:
   useEffect(() => {
-    const currentQ = searchParams.get("q") || "";
-    if (debouncedQuery && debouncedQuery !== currentQ) {
-      router.replace(`/search?q=${encodeURIComponent(debouncedQuery)}`, {
-        scroll: false,
-      });
-    } else if (!debouncedQuery && currentQ) {
-      router.replace("/search", { scroll: false });
+    const params = new URLSearchParams(searchParams.toString());
+    if ((params.get("tab") || "search") !== "search") return;
+    const currentQ = params.get("q") || "";
+
+    // Input still settling — writing the lagging debounced value would push a
+    // stale query.
+    if (debouncedQuery !== query) return;
+
+    // URL already reflects our settled value; just remember it.
+    if (debouncedQuery === currentQ) {
+      lastSyncedQ.current = currentQ;
+      return;
     }
-  }, [debouncedQuery, router, searchParams]);
+
+    // The URL holds a value we did NOT write and that doesn't match the input —
+    // an external navigation (topbar/back) is ahead of us. Let the url→state
+    // effect adopt it; do not overwrite it with the stale value.
+    if (currentQ && currentQ !== lastSyncedQ.current) return;
+
+    if (debouncedQuery) {
+      params.set("q", debouncedQuery);
+      lastSyncedQ.current = debouncedQuery;
+      router.replace(`/search?${params.toString()}`, { scroll: false });
+    } else if (currentQ) {
+      params.delete("q");
+      lastSyncedQ.current = "";
+      const qs = params.toString();
+      router.replace(qs ? `/search?${qs}` : "/search", { scroll: false });
+    }
+  }, [debouncedQuery, query, router, searchParams]);
 
   // Execute search on debounced query change — handle LPA resolution first
   useEffect(() => {
     if (isLpaQuery(debouncedQuery)) {
-      // Resolve LPA → ICCID via Tellisim, then search by ICCID
+      // Resolve LPA → ICCID via Tellisim, then search by ICCID. The seq guard
+      // drops stale resolutions: a slow TelliSIM scan must not clobber the
+      // results of whatever the operator searched next.
+      const seq = ++lpaSeqRef.current;
       setLpaResolving(true);
       setLpaError(null);
       setResolvedIccid(null);
@@ -211,6 +250,7 @@ function SearchPageContent() {
 
       fetchTelliSIM("/api/tellisim/search-by-lpa", { lpa: debouncedQuery.trim() })
         .then((data) => {
+          if (seq !== lpaSeqRef.current) return;
           if (data.ok && data.iccid) {
             setResolvedIccid(data.iccid);
             setLpaError(null);
@@ -223,10 +263,13 @@ function SearchPageContent() {
           }
         })
         .catch((err) => {
+          if (seq !== lpaSeqRef.current) return;
           setLpaError(err instanceof Error ? err.message : "Failed to resolve LPA");
           setLpaResolving(false);
         });
     } else {
+      // Any newer non-LPA query invalidates in-flight LPA resolutions
+      lpaSeqRef.current++;
       // Clear LPA state for normal searches
       if (lpaOriginal && !isLpaQuery(debouncedQuery)) {
         setLpaOriginal(null);
@@ -413,12 +456,7 @@ function SearchPageContent() {
                   </div>
                   <div className="space-y-2">
                     {results.map((result) => {
-                      const customerName = [
-                        result.customer_first_name,
-                        result.customer_last_name,
-                      ]
-                        .filter(Boolean)
-                        .join(" ");
+                      const customerName = (result.customer_name || "").trim();
                       const statusKey = (result.status || "").toLowerCase();
                       const formattedDate = result.created_at
                         ? (() => {
@@ -432,11 +470,13 @@ function SearchPageContent() {
                           })()
                         : "";
                       const totalDisplay =
-                        result.total_usd != null
-                          ? `$${Number(result.total_usd).toFixed(2)}`
-                          : result.total != null
-                            ? `${Number(result.total).toFixed(2)} ${result.currency || ""}`
-                            : "";
+                        result.total != null && !isNaN(Number(result.total))
+                          ? `${Number(result.total).toFixed(2)}${
+                              result.currency_iso
+                                ? ` ${String(result.currency_iso).toUpperCase()}`
+                                : ""
+                            }`
+                          : "";
 
                       // Build URL with order + serial context
                       const searchedSerial = (isIccidQuery || resolvedIccid) ? (resolvedIccid || debouncedQuery.trim()) : null;
@@ -474,7 +514,11 @@ function SearchPageContent() {
                                     {result.customer_email &&
                                       ` (${result.customer_email})`}
                                     {result.product_sku &&
-                                      ` \u00B7 ${result.product_sku}`}
+                                      ` \u00B7 ${
+                                        Array.isArray(result.product_sku)
+                                          ? result.product_sku.join(", ")
+                                          : result.product_sku
+                                      }`}
                                     {totalDisplay && ` \u00B7 ${totalDisplay}`}
                                   </p>
                                   {/* Matched ICCID indicator */}

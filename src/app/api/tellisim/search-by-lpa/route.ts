@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { listSims } from "@/lib/tellisim-client";
 import { resolveTelliSIMCredentials } from "@/lib/server-credentials";
 
@@ -92,7 +93,6 @@ export async function POST(req: NextRequest) {
       error: "No SIM found with this LPA string in TelliSIM (searched 5000 SIMs)",
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return sanitizeError(err, "TelliSIM");
   }
 }

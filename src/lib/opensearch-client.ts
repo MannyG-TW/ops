@@ -17,7 +17,8 @@ export async function queryOS(
   index: string,
   body: Record<string, unknown>,
   params: Record<string, string> = {},
-  timeoutMs: number = 15000
+  timeoutMs: number = 15000,
+  signal?: AbortSignal
 ) {
   const cleanUrl = creds.url.replace(/\/$/, "");
   const queryString = new URLSearchParams(params).toString();
@@ -35,7 +36,11 @@ export async function queryOS(
     method: "POST",
     headers,
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
+    // Abandoned client requests cancel the upstream query instead of running
+    // a full 15s wildcard scan for nobody
+    signal: signal
+      ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal])
+      : AbortSignal.timeout(timeoutMs),
   });
 
   if (!res.ok) {

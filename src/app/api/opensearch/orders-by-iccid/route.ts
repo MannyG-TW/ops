@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-errors";
 import { queryOS } from "@/lib/opensearch-client";
 import { resolveOpenSearchCredentials } from "@/lib/server-credentials";
 import { INDEX_ORDERS } from "@/lib/opensearch-indices";
@@ -44,7 +45,6 @@ export async function POST(req: NextRequest) {
       total: result.hits?.total?.value || 0,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return sanitizeError(err, "OpenSearch");
   }
 }
