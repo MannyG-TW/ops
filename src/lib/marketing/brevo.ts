@@ -47,7 +47,7 @@ const isoDate = (sec: number | null | undefined): string =>
   sec ? new Date(Number(sec) * 1000).toISOString().slice(0, 10) : "";
 
 /** ISO alpha-2 from a storefront `system` suffix (US/MX/CL/SG/CH…); "" if not a country. */
-function systemIso(system: string | null | undefined): string {
+export function systemIso(system: string | null | undefined): string {
   const s = (system || "").trim().toUpperCase();
   if (!s || /LOCAL$/.test(s) || s === "B2C" || s === "B2B" || s === "B2P" || s === "GNG") return "";
   if (s === "QRO") return "MX"; // Querétaro storefront — doesn't follow the suffix rule
@@ -71,7 +71,7 @@ const NAME_TO_ISO: Record<string, string> = (() => {
   });
   return m;
 })();
-function countryNameToIso(name: string | null | undefined): string {
+export function countryNameToIso(name: string | null | undefined): string {
   const n = (name || "").trim().toLowerCase();
   if (!n) return "";
   if (NAME_TO_ISO[n]) return NAME_TO_ISO[n];
@@ -79,7 +79,7 @@ function countryNameToIso(name: string | null | undefined): string {
 }
 
 /** Split a full name into {first,last}, handling "Last, First" and "First Last". */
-function splitName(full: string | null | undefined): { first: string; last: string } {
+export function splitName(full: string | null | undefined): { first: string; last: string } {
   const s = (full || "").trim();
   if (!s) return { first: "", last: "" };
   if (s.includes(",")) {
