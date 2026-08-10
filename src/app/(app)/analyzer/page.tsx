@@ -50,7 +50,8 @@ import * as XLSX from "xlsx";
 
 interface SkippedImei {
   value: string;
-  reason: "invalid" | "duplicate";
+  row: number;
+  reason: string;
 }
 
 interface UsageReportData {
@@ -131,10 +132,7 @@ export default function AnalyzerPage() {
   // ─── IMEI Validation ───
 
   const processImeis = useCallback((raw: string) => {
-    const lines = raw
-      .split(/[\n\r,]+/)
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const lines = raw.split(/[\n\r,]+/).map((l) => l.trim());
 
     const errors: string[] = [];
     const valid: string[] = [];
@@ -143,16 +141,26 @@ export default function AnalyzerPage() {
     let invalid = 0;
     const seen = new Set<string>();
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line) continue;
+      const row = i + 1;
       const cleaned = line.replace(/\D/g, "");
       if (cleaned.length !== 15 && cleaned.length !== 16) {
         invalid++;
-        skipped.push({ value: line, reason: "invalid" });
+        skipped.push({
+          value: line,
+          row,
+          reason:
+            cleaned.length === 0
+              ? "no digits — header or label?"
+              : `${cleaned.length} digits — must be 15 or 16`,
+        });
         continue;
       }
       if (seen.has(cleaned)) {
         dupes++;
-        skipped.push({ value: cleaned, reason: "duplicate" });
+        skipped.push({ value: cleaned, row, reason: "duplicate" });
         continue;
       }
       seen.add(cleaned);
@@ -301,11 +309,14 @@ export default function AnalyzerPage() {
 
     // Sheet 2: Skipped IMEIs
     const skippedRows = skippedImeis.map((s) => ({
+      Row: s.row,
       IMEI: s.value,
-      Reason: s.reason === "invalid" ? "invalid length" : "duplicate",
+      Reason: s.reason,
     }));
     const ws2 = XLSX.utils.json_to_sheet(
-      skippedRows.length > 0 ? skippedRows : [{ IMEI: "(none)", Reason: "" }]
+      skippedRows.length > 0
+        ? skippedRows
+        : [{ Row: "", IMEI: "(none)", Reason: "" }]
     );
 
     const wb = XLSX.utils.book_new();
@@ -535,7 +546,7 @@ export default function AnalyzerPage() {
                     className="h-7 rounded-[6px] text-[12px]"
                     onClick={() => {
                       const text = skippedImeis
-                        .map((s) => `${s.value}\t${s.reason === "invalid" ? "invalid length" : "duplicate"}`)
+                        .map((s) => `${s.row}\t${s.value}\t${s.reason}`)
                         .join("\n");
                       navigator.clipboard.writeText(text);
                     }}
@@ -545,14 +556,24 @@ export default function AnalyzerPage() {
                 </div>
                 <div className="max-h-[160px] overflow-y-auto rounded-[6px] bg-white border border-border">
                   <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="px-3 py-1.5 text-left text-[11px] font-[540] text-muted-foreground whitespace-nowrap">Line</th>
+                        <th className="px-3 py-1.5 text-left text-[11px] font-[540] text-muted-foreground">Skipped entry</th>
+                        <th className="px-3 py-1.5 text-right text-[11px] font-[540] text-muted-foreground">Reason</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {skippedImeis.map((s, i) => (
                         <tr key={i} className="border-b border-border last:border-b-0">
+                          <td className="px-3 py-1.5 text-[12px] font-[460] text-muted-foreground whitespace-nowrap">
+                            {s.row}
+                          </td>
                           <td className="px-3 py-1.5 font-mono text-[12px] font-[540] text-charcoal select-all">
-                            {s.value}
+                            &ldquo;{s.value}&rdquo;
                           </td>
                           <td className="px-3 py-1.5 text-[12px] font-[460] text-muted-foreground text-right whitespace-nowrap">
-                            {s.reason === "invalid" ? "invalid length" : "duplicate"}
+                            {s.reason}
                           </td>
                         </tr>
                       ))}
@@ -907,7 +928,7 @@ export default function AnalyzerPage() {
                     className="h-7 rounded-[6px] text-[12px]"
                     onClick={() => {
                       const text = skippedImeis
-                        .map((s) => `${s.value}\t${s.reason === "invalid" ? "invalid length" : "duplicate"}`)
+                        .map((s) => `${s.row}\t${s.value}\t${s.reason}`)
                         .join("\n");
                       navigator.clipboard.writeText(text);
                     }}
@@ -919,14 +940,24 @@ export default function AnalyzerPage() {
               <CardContent className="pt-0">
                 <div className="max-h-[200px] overflow-y-auto rounded-[8px] border border-border">
                   <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="px-3 py-1.5 text-left text-[11px] font-[540] text-muted-foreground whitespace-nowrap">Line</th>
+                        <th className="px-3 py-1.5 text-left text-[11px] font-[540] text-muted-foreground">Skipped entry</th>
+                        <th className="px-3 py-1.5 text-right text-[11px] font-[540] text-muted-foreground">Reason</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {skippedImeis.map((s, i) => (
                         <tr key={i} className="border-b border-border last:border-b-0">
+                          <td className="px-3 py-1.5 text-[12px] font-[460] text-muted-foreground whitespace-nowrap">
+                            {s.row}
+                          </td>
                           <td className="px-3 py-1.5 font-mono text-[12px] font-[540] text-charcoal select-all">
-                            {s.value}
+                            &ldquo;{s.value}&rdquo;
                           </td>
                           <td className="px-3 py-1.5 text-[12px] font-[460] text-muted-foreground text-right whitespace-nowrap">
-                            {s.reason === "invalid" ? "invalid length" : "duplicate"}
+                            {s.reason}
                           </td>
                         </tr>
                       ))}
