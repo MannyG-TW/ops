@@ -553,6 +553,25 @@ Returned when no subscription exists for the supplied ICCID.
 | `error` | boolean | ✓ | Indicates whether an error occurred | `true` |
 | `message` | string | ✓ | Error message | `"Subscription not found"` |
 
+### As implemented in this repo
+
+| Piece | Location |
+|-------|----------|
+| API call | `getNetworkEvents()` — `src/lib/tellisim-client.ts` |
+| Dual-casing normalizer + intent analysis | `src/lib/network-events.ts` |
+| Route (pull → analyze → persist) | `POST /api/tellisim/network-events/[iccid]` |
+| Demand read-back | `GET /api/tellisim/network-events` — country leaderboard; `?iccid=` for raw events |
+| Storage | `network_intent_events` table — one row per event in an uncovered country |
+| UI | "Network Activity" panel in the ICCID lookup (`src/components/lookup/iccid-lookup.tsx`) |
+
+Three decisions worth knowing before changing any of it:
+
+- **Coverage is resolved server-side.** The route fetches the plan attachment and its coverage profile itself rather than trusting a caller-supplied country list — otherwise any client could mark arbitrary countries as uncovered and poison the demand dataset. When coverage cannot be resolved, `coverageKnown` is false and **no** findings are produced, so a lookup failure can never be misread as "the customer went off-plan."
+- **Rows are stored at event grain**, keyed on `(iccid, country_alpha_2, event_time, kind)`. Re-pulling an overlapping 7-day window is therefore idempotent — repeat lookups `onConflictDoNothing` instead of inflating counts. Country-level demand is a `GROUP BY`, not a stored counter.
+- **`resolveIso2()` falls back to the country name** when `country_alpha_2` is absent, on both sides of the comparison but for opposite reasons: on the event side a missing code would silently drop a real finding, on the covered side it would fabricate one. The bias is toward a larger covered set — a missed finding costs less than an invented one. An unrecognised name resolves to null and the event is skipped, never guessed.
+
+**Blind spot this cannot see.** An attach only reaches this endpoint if the visited network's request actually got to TelliSIM's core, which needs roaming interconnect. A country with no interconnect at all — or a device whose PLMN list stops it from trying — produces no event to capture. That surfaces as `verdict: "no_events"`, which cannot distinguish "never switched on" from "somewhere invisible to us."
+
 ### Debugging playbook — "my eSIM doesn't work"
 
 Use this endpoint to narrow down **where** the failure happened. The two stages are sequential: an eSIM must attach to a network before it can pass data.

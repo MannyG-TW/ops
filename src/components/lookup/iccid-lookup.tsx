@@ -19,6 +19,8 @@ import {
   XCircle,
   WifiOff,
   ChevronRight,
+  RadioTower,
+  Plane,
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import type { EsimPdfOptions } from "@/lib/esim-pdf";
@@ -65,6 +67,45 @@ const statusColors: Record<string, string> = {
 const subStatusColors: Record<string, string> = {
   active: "bg-success-soft text-success",
   suspended: "bg-fraud-yellow-soft text-fraud-yellow",
+};
+
+/**
+ * Support-facing copy for each network-events verdict. Keep in sync with
+ * `NetworkVerdict` in `@/lib/network-events` — the two stages are sequential,
+ * so the verdict already tells the agent which side to look at.
+ */
+const VERDICT_COPY: Record<string, { label: string; detail: string; className: string }> = {
+  no_events: {
+    label: "No activity",
+    detail: "No attach or data events in this window — the eSIM never reached a network.",
+    className: "bg-muted text-muted-foreground",
+  },
+  no_attach: {
+    label: "No attach",
+    detail: "Data events only, no attach records. Check the profile is installed and enabled.",
+    className: "bg-fraud-yellow-soft text-fraud-yellow",
+  },
+  attach_rejected: {
+    label: "Attach rejected",
+    detail: "The eSIM reached a network but every operator refused it.",
+    className: "bg-fraud-red-soft text-fraud-red",
+  },
+  attach_ok_no_data: {
+    label: "No data session",
+    detail:
+      "Registered on the network but never opened a data session — usually APN or device config.",
+    className: "bg-fraud-yellow-soft text-fraud-yellow",
+  },
+  data_failed: {
+    label: "Data failing",
+    detail: "Attach succeeded but every data session failed — vendor-side, escalate.",
+    className: "bg-fraud-red-soft text-fraud-red",
+  },
+  ok: {
+    label: "Working",
+    detail: "Attach and data both succeeded in this window.",
+    className: "bg-success-soft text-success",
+  },
 };
 
 function subStatusClass(status: string): string {
@@ -130,6 +171,11 @@ export function IccidLookup() {
   const [cdrLoading, setCdrLoading] = useState(false);
   const [cdrError, setCdrError] = useState<string | null>(null);
   const [cdrRows, setCdrRows] = useState<AnyRecord[]>([]);
+
+  // Network events — attach/data verdict + out-of-coverage travel intent
+  const [netLoading, setNetLoading] = useState(false);
+  const [netError, setNetError] = useState<string | null>(null);
+  const [netData, setNetData] = useState<AnyRecord | null>(null);
 
   // SMDP profile (state history + SIM/device details)
   const [smdpLoading, setSmdpLoading] = useState(false);
@@ -226,13 +272,41 @@ export function IccidLookup() {
       .catch((e: Error) => { if (!stale()) setLocError(e.message); })
       .finally(() => { if (!stale()) setLocLoading(false); });
 
-    // 3. Orders
+    // Network events — last 7 days of attach + data records. The route resolves
+    // the plan's coverage itself and persists any activity in a country the plan
+    // does not cover, so this call is what builds the travel-intent dataset.
+    // Chained off Orders so the saved rows carry customer context; fires anyway
+    // if the order lookup fails, since the intent signal matters more than the
+    // attribution.
+    const runNetworkEvents = (order?: OrderResult) => {
+      setNetLoading(true);
+      setNetError(null);
+      setNetData(null);
+      fetchTelliSIM(`/api/tellisim/network-events/${trimmed}`, {
+        orderNumber: order?.order_number,
+        customerEmail: order?.customer_email,
+      })
+        .then((d: AnyRecord) => { if (!stale()) setNetData(d); })
+        .catch((e: Error) => { if (!stale()) setNetError(e.message); })
+        .finally(() => { if (!stale()) setNetLoading(false); });
+    };
+
+    // 3. Orders → chain Network events (needs order context for attribution)
     setOrdLoading(true);
     setOrdError(null);
     setOrdData([]);
     fetchOS("/api/opensearch/search", { query: trimmed })
-      .then((d: { results?: OrderResult[] }) => { if (!stale()) setOrdData(d.results ?? []); })
-      .catch((e: Error) => { if (!stale()) setOrdError(e.message); })
+      .then((d: { results?: OrderResult[] }) => {
+        if (stale()) return;
+        const results = d.results ?? [];
+        setOrdData(results);
+        runNetworkEvents(results[0]);
+      })
+      .catch((e: Error) => {
+        if (stale()) return;
+        setOrdError(e.message);
+        runNetworkEvents();
+      })
       .finally(() => { if (!stale()) setOrdLoading(false); });
 
     // 4. SMDP profile — state history + SIM/device details (EID, LPA)
@@ -288,6 +362,12 @@ export function IccidLookup() {
   const eid = String(sim?.eid || smdp?.eid || "");
   // LPA activation code — subscription is primary, SIM details is fallback
   const lpa = lpaString || String(sim?.lpa || "");
+
+  // Network events: { verdict, attachedOk, dataOk, outOfCoverage: [...], coverageKnown, saved }
+  const net = netData as AnyRecord | null;
+  const outOfCoverage = (net?.outOfCoverage as AnyRecord[]) ?? [];
+  const netVerdictInfo = net?.verdict ? VERDICT_COPY[String(net.verdict)] : undefined;
+  const netPeriod = net?.period as AnyRecord | undefined;
 
   // Coverage: { coverageProfile: { countries: [{ name, iso2, operators: [{ name, supported_rats }] }] } }
   // or from all profiles: { coverageProfiles: [{ countries: [...] }] }
@@ -598,6 +678,122 @@ export function IccidLookup() {
                 expiresOn: expiryDate || undefined,
               }}
             />
+          </LookupCard>
+
+          {/* Network Activity (full width) — attach/data verdict + travel intent.
+              Out-of-coverage hits are the signal we persist: the customer was
+              somewhere we never sold them coverage. */}
+          <LookupCard
+            title="Network Activity"
+            icon={<RadioTower className="h-3.5 w-3.5 text-amethyst" />}
+            loading={netLoading}
+            error={netError}
+            empty={!net && !netLoading && !netError}
+            badge={
+              netVerdictInfo
+                ? { label: netVerdictInfo.label, className: netVerdictInfo.className }
+                : null
+            }
+            fullWidth
+          >
+            <div className="space-y-3">
+              {netVerdictInfo && (
+                <p className="text-[12px] font-[460] text-muted-foreground">
+                  {netVerdictInfo.detail}
+                  {netPeriod?.start && netPeriod?.end && (
+                    <span className="text-muted-foreground/70">
+                      {" "}
+                      ({String(netPeriod.start)} → {String(netPeriod.end)})
+                    </span>
+                  )}
+                </p>
+              )}
+
+              {outOfCoverage.length > 0 ? (
+                <div className="rounded-[8px] border border-fraud-yellow/30 bg-fraud-yellow-soft/40 p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Plane className="h-3.5 w-3.5 text-fraud-yellow" />
+                    <span className="text-[12px] font-[600] text-charcoal">
+                      Tried to connect outside plan coverage
+                    </span>
+                    <span className="rounded-full bg-fraud-yellow-soft px-2 py-0.5 text-[11px] font-[540] text-fraud-yellow">
+                      {outOfCoverage.length}{" "}
+                      {outOfCoverage.length === 1 ? "country" : "countries"}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {outOfCoverage.map((c, i) => (
+                      <div key={i} className="flex items-baseline justify-between gap-3">
+                        <span className="text-[12px] font-[540] text-charcoal">
+                          {String(c.countryName || c.countryAlpha2)}
+                          <span className="ml-1.5 text-[10px] font-[460] text-muted-foreground">
+                            {String(c.countryAlpha2)}
+                          </span>
+                        </span>
+                        <span className="max-w-[55%] truncate text-right text-[10px] font-[460] text-muted-foreground">
+                          {Number(c.attempts)} {Number(c.attempts) === 1 ? "event" : "events"}
+                          {(c.operators as string[])?.length > 0 &&
+                            ` · ${(c.operators as string[]).join(", ")}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[11px] font-[460] text-muted-foreground">
+                    Unmet demand — the plan covers{" "}
+                    {(net?.coveredCountries as string[])?.length ?? 0} countries, none of them
+                    these. Captured for pricing.
+                  </p>
+                </div>
+              ) : net?.coverageKnown ? (
+                <p className="text-[12px] font-[460] text-muted-foreground">
+                  All activity was inside the plan&apos;s coverage.
+                </p>
+              ) : net ? (
+                <p className="text-[12px] font-[460] text-muted-foreground">
+                  Coverage unknown
+                  {net?.coverageError ? ` — ${String(net.coverageError)}` : ""}. Out-of-coverage
+                  detection skipped.
+                </p>
+              ) : null}
+
+              {net && (
+                <div className="flex flex-wrap gap-4 border-t border-border pt-2">
+                  <span className="text-[11px] font-[460] text-muted-foreground">
+                    Attach:{" "}
+                    <span
+                      className={
+                        net.attachedOk ? "font-[540] text-success" : "font-[540] text-fraud-red"
+                      }
+                    >
+                      {net.attachedOk ? "OK" : "none succeeded"}
+                    </span>
+                    <span className="text-muted-foreground/70">
+                      {" "}
+                      ({(net.attaches as AnyRecord[])?.length ?? 0} events)
+                    </span>
+                  </span>
+                  <span className="text-[11px] font-[460] text-muted-foreground">
+                    Data:{" "}
+                    <span
+                      className={
+                        net.dataOk ? "font-[540] text-success" : "font-[540] text-fraud-red"
+                      }
+                    >
+                      {net.dataOk ? "OK" : "none succeeded"}
+                    </span>
+                    <span className="text-muted-foreground/70">
+                      {" "}
+                      ({(net.dataSessions as AnyRecord[])?.length ?? 0} events)
+                    </span>
+                  </span>
+                  {Number(net.saved) > 0 && (
+                    <span className="text-[11px] font-[460] text-muted-foreground">
+                      Saved <span className="font-[540] text-charcoal">{Number(net.saved)}</span> new
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </LookupCard>
 
           {/* Data Usage (full width) — chart + table */}

@@ -177,6 +177,45 @@ export const connectivityReports = sqliteTable("connectivity_reports", {
 export type InsertConnectivityReport = typeof connectivityReports.$inferInsert;
 export type SelectConnectivityReport = typeof connectivityReports.$inferSelect;
 
+/* ─── Network Intent Events ─── */
+// Machine-detected demand signal, NOT an agent-filed complaint (that is
+// `connectivity_reports`). One row per network event TelliSIM reported in a
+// country the customer's plan does not cover — i.e. they physically travelled
+// somewhere we did not sell them coverage for.
+//
+// Stored at EVENT grain, keyed on (iccid, country, event_time, kind), so
+// re-pulling an overlapping 7-day window is idempotent: repeat lookups
+// `onConflictDoNothing` instead of inflating attempt counts. Country-level
+// demand is a GROUP BY, not a stored counter.
+export const networkIntentEvents = sqliteTable("network_intent_events", {
+  id: text("id").primaryKey(), // UUIDv4
+  iccid: text("iccid").notNull(),
+  countryAlpha2: text("country_alpha_2").notNull(), // uppercase ISO2
+  countryName: text("country_name"),
+  operator: text("operator"),
+  kind: text("kind").notNull(), // "2G_3G" | "4G_5G" | "DATA"
+  requestType: text("request_type"), // Init / Update / Term — DATA events only
+  eventTime: text("event_time").notNull(), // raw ISO-8601 from TelliSIM (offset may not be Z)
+  succeeded: integer("succeeded", { mode: "boolean" }).notNull().default(false),
+  // Plan context captured at detection time — the plan is what made this
+  // country "uncovered", so it has to travel with the finding.
+  coverageId: text("coverage_id"),
+  planName: text("plan_name"),
+  regionCode: text("region_code"),
+  coveredCountries: text("covered_countries"), // JSON array of ISO2 the plan DID cover
+  orderNumber: text("order_number"),
+  customerEmail: text("customer_email"),
+  detectedAt: integer("detected_at", { mode: "timestamp" }).notNull(),
+}, (t) => [
+  uniqueIndex("nie_event_idx").on(t.iccid, t.countryAlpha2, t.eventTime, t.kind),
+  index("nie_country_idx").on(t.countryAlpha2),
+  index("nie_iccid_idx").on(t.iccid),
+  index("nie_detected_idx").on(t.detectedAt),
+]);
+
+export type InsertNetworkIntentEvent = typeof networkIntentEvents.$inferInsert;
+export type SelectNetworkIntentEvent = typeof networkIntentEvents.$inferSelect;
+
 /* ─── Refund Reports ─── */
 export const refundReports = sqliteTable("refund_reports", {
   id: text("id").primaryKey(),

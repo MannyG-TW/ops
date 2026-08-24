@@ -135,6 +135,33 @@ export async function getSubscriptionLocation(creds: TelliSIMCredentials, iccid:
 }
 
 /**
+ * Get network attach + data session events for an ICCID over a date range.
+ * POST /v3/subscriptions/{iccid}/network-events
+ *
+ * TelliSIM caps a single call at a **7-day window counting both endpoints**
+ * (2026-08-15 → 2026-08-21 is the maximum) and rejects a `start` that is not
+ * before `end`. Anything longer must be chunked by the caller.
+ *
+ * Returns `{ error, label, data: { 2g_or_3g_attach[], 4g_or_5g_attach[],
+ * data_usage[] } }`. Field casing is inconsistent between TelliSIM's schema and
+ * their live payloads — always run the result through `normalizeNetworkEvents()`
+ * in `@/lib/network-events` rather than reading keys directly.
+ *
+ * @param start Inclusive start date, `YYYY-MM-DD`
+ * @param end   Inclusive end date, `YYYY-MM-DD`
+ */
+export async function getNetworkEvents(
+  creds: TelliSIMCredentials,
+  iccid: string,
+  start: string,
+  end: string
+) {
+  return telliSIMFetch(creds, `/v3/subscriptions/${iccid}/network-events`, "POST", {
+    period: { start, end },
+  });
+}
+
+/**
  * Get a single coverage profile by ID.
  * GET /v3/coverage-profiles/{coverageId}
  */
