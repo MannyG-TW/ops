@@ -377,6 +377,211 @@ This endpoint allows you to send an SMS message to a specified eSIM subscription
 
 ---
 
+## Get Subscription Location
+
+Returns the last known network attach for the eSIM. Only returns data if the eSIM has been active within the last 7 days; for disabled, deleted, or never-activated profiles the operator block is empty.
+
+**Endpoint:** `GET /v3/subscriptions/{iccid}/location`  
+**Security:** ApiKeyAuth
+
+### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `iccid` | string | ✓ | The ICCID of the subscription |
+
+### Response 200 (application/json)
+
+> ⚠️ **Confirmed live shape (verified against production 2026-06-16):** this response has **no `data` wrapper**, unlike `/v3/sims/{iccid}`. The payload is `error` + `last_operator` at the top level.
+
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `error` | boolean | ✓ | Indicates whether an error occurred | `false` |
+| `last_operator.country` | string | | Country name of the last attach | `"United States"` |
+| `last_operator.country_alpha_2` | string | | ISO 3166-1 alpha-2 country code | `"us"` |
+| `last_operator.operator` | string | | Mobile network operator name | `"AT&T USA"` |
+| `last_operator.event_time` | string (date-time) | | Timestamp of the last attach | `"2026-08-11T18:29:48Z"` |
+| `last_operator.rat` | string | | Radio access technology | `"4G"` |
+| `last_operator.imei` | string | | Device IMEI seen on the network (returned for active SIMs; `brand`/`model` are frequently absent even when `imei` is present) | `"356938035643809"` |
+
+---
+
+## Get Network Events
+
+Retrieves network attach and data session events for a single subscription (by ICCID) over a date range. This is the **primary connectivity-debugging endpoint** — it tells you whether an eSIM attached to a network at all, and if it did, whether its data sessions succeeded.
+
+**Endpoint:** `POST /v3/subscriptions/{iccid}/network-events`  
+**Security:** ApiKeyAuth
+
+### Constraints
+
+- Maximum period is **7 days**, counting both the start and end dates (e.g. `2026-08-15` → `2026-08-21`).
+- `start` must come before `end`.
+- Requests that violate either constraint are **rejected** (see Response 400).
+
+To cover a longer window, issue several requests of ≤ 7 days each and merge the arrays client-side.
+
+### Path Parameters
+
+| Parameter | Type | Required | Description | Example |
+|-----------|------|----------|-------------|---------|
+| `iccid` | string | ✓ | The ICCID of the subscription | `8948010000094659307` |
+
+### Request Body (application/json)
+
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `period` | object | ✓ | The time period to retrieve events for. Maximum 7 days including start and end dates. | |
+| `period.start` | string (date) | ✓ | Start date, `YYYY-MM-DD`. Must come before the end date. | `"2026-08-15"` |
+| `period.end` | string (date) | ✓ | End date, `YYYY-MM-DD`. Maximum 7 days from start (inclusive). | `"2026-08-21"` |
+
+```bash
+curl -i -X POST \
+  'https://api.tellisim.com/v3/subscriptions/8948010000094659307/network-events?key=${TELLISIM_API_KEY}' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "period": {
+      "start": "2026-08-15",
+      "end": "2026-08-21"
+    }
+  }'
+```
+
+### Response 200 (application/json)
+
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `error` | boolean | ✓ | Indicates whether there was an error processing the request | `false` |
+| `label` | string | | Label enum — `Green`, `Aqua`, `Blue`, `Voilet`, `Red`, `Grey`, `Orange` (see Labels Reference) | `"Green"` |
+| `data` | object | ✓ | The network events recorded during the period | |
+| `data.2g_or_3g_attach` | array | ✓ | Network attach events for 2G/3G connections | |
+| `data.4g_or_5g_attach` | array | ✓ | Network attach events for 4G/5G connections | |
+| `data.data_usage` | array | ✓ | Data session events (`Init` / `Update` / `Term`) | |
+
+#### `data.2g_or_3g_attach[]`
+
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `event_time` | string (date-time) | ✓ | Timestamp (UTC) when the attach event occurred | `"2026-08-17T21:51:27Z"` |
+| `country_name` | string | ✓ | Country where the event occurred | `"Morocco"` |
+| `country_alpha_2` | string | ✓ | ISO 3166-1 alpha-2 country code (lowercase) | `"ma"` |
+| `operator` | string | ✓ | Mobile network operator name | `"Inwi Morocco"` |
+| `result` | string | ✓ | **`"ok"` means the attach succeeded.** Anything else is a failure. | `"ok"` |
+
+#### `data.4g_or_5g_attach[]`
+
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `event_time` | string (date-time) | ✓ | Timestamp (UTC) when the attach event occurred | `"2026-08-20T22:54:25Z"` |
+| `country_name` | string | ✓ | Country where the event occurred | `"Morocco"` |
+| `country_alpha_2` | string | ✓ | ISO 3166-1 alpha-2 country code (lowercase) | `"ma"` |
+| `operator` | string | ✓ | Mobile network operator name | `"Inwi Morocco"` |
+| `oper_allowed` | boolean | ✓ | **`true` means the operator allowed the attach and it succeeded.** `false` means the operator refused the eSIM. | `true` |
+
+#### `data.data_usage[]`
+
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `event_time` | string (date-time) | ✓ | Timestamp (UTC) when the data session event occurred | `"2026-08-21T06:32:32Z"` |
+| `request_type` | string | ✓ | Type of data session request — `Init`, `Update`, or `Term` | `"Update"` |
+| `country_name` | string | ✓ | Country where the event occurred | `"Morocco"` |
+| `country_alpha_2` | string | ✓ | ISO 3166-1 alpha-2 country code (lowercase) | `"ma"` |
+| `operator` | string | ✓ | Mobile network operator name | `"Inwi Morocco"` |
+| `result` | string | ✓ | **`"success"` means the eSIM was able to use data.** Anything else is a failed session. | `"success"` |
+
+```json
+{
+  "error": false,
+  "label": "Green",
+  "data": {
+    "2g_or_3g_attach": [
+      {
+        "event_time": "2026-08-17T21:51:27Z",
+        "country_name": "Morocco",
+        "country_alpha_2": "ma",
+        "operator": "Inwi Morocco",
+        "result": "ok"
+      }
+    ],
+    "4g_or_5g_attach": [
+      {
+        "event_time": "2026-08-20T22:54:25Z",
+        "country_name": "Morocco",
+        "country_alpha_2": "ma",
+        "operator": "Inwi Morocco",
+        "oper_allowed": true
+      }
+    ],
+    "data_usage": [
+      {
+        "event_time": "2026-08-21T06:32:32Z",
+        "request_type": "Update",
+        "country_name": "Morocco",
+        "country_alpha_2": "ma",
+        "operator": "Inwi Morocco",
+        "result": "success"
+      }
+    ]
+  }
+}
+```
+
+> ⚠️ **Field-name discrepancy — parse defensively.** TelliSIM's own sample payload (shared by their support team, Aug 2026) uses **camelCase** keys — `eventTime`, `countryName`, `countryAlpha2`, `requestType` — and returns `oper_allowed` as the **string** `"true"` rather than a boolean, with local-offset timestamps (`2026-08-11T18:29:48.932+02:00`) instead of the UTC `Z` form the schema specifies. The published reference (above) is snake_case with a real boolean. This is the same class of inconsistency already seen on `lpa` / `lpastring` / `lpa_string`. Any client we write must accept **both** casings and treat `oper_allowed` as truthy-string-or-boolean, and must not assume `Z`-suffixed timestamps.
+
+### Response 400 (application/json)
+
+Returned when the period exceeds 7 days, or when `start` is not before `end`.
+
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `error` | boolean | ✓ | Indicates whether an error occurred | `true` |
+| `message` | string | ✓ | Description of the constraint that was violated | `"Invalid period"` |
+
+### Response 401 (application/json)
+
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `error` | boolean | ✓ | Indicates whether an error occurred during the request | `true` |
+| `message` | string | ✓ | Error message describing the unauthorized access | `"Unauthorized: API key is missing"` |
+
+### Response 404 (application/json)
+
+Returned when no subscription exists for the supplied ICCID.
+
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `error` | boolean | ✓ | Indicates whether an error occurred | `true` |
+| `message` | string | ✓ | Error message | `"Subscription not found"` |
+
+### Debugging playbook — "my eSIM doesn't work"
+
+Use this endpoint to narrow down **where** the failure happened. The two stages are sequential: an eSIM must attach to a network before it can pass data.
+
+**Stage 1 — did it attach to the network?**
+
+Check `2g_or_3g_attach` or `4g_or_5g_attach`, depending on which network the device is trying to use.
+
+| Array | Success condition | Failure condition |
+|-------|-------------------|-------------------|
+| `2g_or_3g_attach` | `result == "ok"` | any other `result` value |
+| `4g_or_5g_attach` | `oper_allowed == true` | `oper_allowed == false` — the operator refused the eSIM |
+
+- **No attach events at all** → the device never even tried on a network TelliSIM sees. Look at the device side: is the profile installed and enabled, is data roaming on, is the APN right, is the device SIM-locked?
+- **Attach events present but all failing** → the eSIM reached the network and was rejected. Confirm the operator is in the plan's coverage profile (`GET /v3/coverage-profiles/{coverageId}`), then escalate to carrier ops with the `operator` + `country_name` + `event_time` from the failing event.
+- **Attach succeeded** → go to Stage 2.
+
+**Stage 2 — could it actually use data?**
+
+Check `data_usage`.
+
+- `result == "success"` → the data session worked. If the customer still reports "no internet", the problem is downstream: allowance exhausted (check `used_allowance.dataBytes` vs `plan.data_mega_bytes` on the plan attachment), throttling, or a device/perception issue.
+- `result` anything else → the session failed after a successful attach. Capture `request_type`, `operator`, and `event_time` and escalate — this is a vendor-side problem, not a device problem.
+- **Attach succeeded but `data_usage` is empty** → the eSIM registered on the network but never opened a data session. Usually an APN or device-configuration issue.
+
+Read `request_type` as the session lifecycle: `Init` opens a session, `Update` refreshes it mid-session, `Term` closes it. A long run of `Init` with no `Update` suggests sessions that open and immediately drop.
+
+---
+
 # Plans
 
 Operations related to plans.
@@ -1078,6 +1283,8 @@ The event is sent whenever the SMDP state of an event is changed.
 | GET | `/v3/subscriptions/{iccid}/plan-attachments/{plan_id}` | Get a plan attachment |
 | POST | `/v3/subscriptions/{iccid}/plan-attachments/{id}/suspend` | Suspend a plan attachment |
 | POST | `/v3/subscriptions/{iccid}/send-sms` | Send SMS |
+| GET | `/v3/subscriptions/{iccid}/location` | Get subscription location (last known operator) |
+| POST | `/v3/subscriptions/{iccid}/network-events` | Get network events (attach + data session debugging, max 7-day window) |
 
 ## Plans
 | Method | Endpoint | Description |

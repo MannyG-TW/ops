@@ -70,6 +70,33 @@ Request: `from`, `message` (both required).
 ### Get Subscription Location – `GET /v3/subscriptions/{iccid}/location`
 Only returns data if active in last 7 days.
 
+**Confirmed live shape (2026-06-16):** `{ error, last_operator: { country, country_alpha_2, operator, event_time, rat, imei } }` — **no `data` wrapper** (unlike `/v3/sims/{iccid}`).
+
+### Get Network Events – `POST /v3/subscriptions/{iccid}/network-events`
+Attach + data-session history for one ICCID. **The connectivity-debugging endpoint.**
+
+**Request:** `{ "period": { "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" } }`
+**Constraints:** max **7 days inclusive**; `start` must precede `end`; violations are rejected (400). Longer windows require multiple calls, merged client-side.
+
+**Response 200**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| error | boolean | — |
+| label | string | Green / Aqua / Blue / Voilet / Red / Grey / Orange |
+| data.2g_or_3g_attach[] | array | `event_time`, `country_name`, `country_alpha_2`, `operator`, **`result`** |
+| data.4g_or_5g_attach[] | array | `event_time`, `country_name`, `country_alpha_2`, `operator`, **`oper_allowed`** |
+| data.data_usage[] | array | `event_time`, **`request_type`** (Init / Update / Term), `country_name`, `country_alpha_2`, `operator`, **`result`** |
+
+**How to read it (two sequential stages):**
+
+1. **Attach** — `2g_or_3g_attach[].result == "ok"` OR `4g_or_5g_attach[].oper_allowed == true` means the eSIM reached the network. No events at all = device-side (profile not installed/enabled, roaming off, wrong APN). Events present but all failing = operator refused → check coverage profile, then escalate to carrier ops.
+2. **Data** — only meaningful once attach succeeded. `data_usage[].result == "success"` means data flowed. Anything else = vendor-side session failure. Attach OK but empty `data_usage` = APN / device config.
+
+⚠️ **Field-name discrepancy — parse defensively.** TelliSIM's own sample payload (Aug 2026) uses **camelCase** (`eventTime`, `countryName`, `countryAlpha2`, `requestType`), sends `oper_allowed` as the **string** `"true"`, and uses local-offset timestamps (`+02:00`) — while the published schema is snake_case with a real boolean and UTC `Z`. Accept both casings; treat `oper_allowed` as truthy-string-or-boolean. Same class of bug as `lpa` / `lpastring` / `lpa_string`.
+
+**Errors:** 400 (period > 7 days or start ≥ end), 401 (missing/bad key), 404 (unknown ICCID).
+
 ---
 
 ## 2. Plans
