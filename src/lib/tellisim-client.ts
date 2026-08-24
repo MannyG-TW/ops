@@ -15,8 +15,16 @@ function redactKey(s: string): string {
   return s.replace(/key=[^&\s"']+/gi, "key=***");
 }
 
-/** Default per-request timeout. Generous enough for the lookup endpoints. */
-const DEFAULT_TIMEOUT_MS = 10_000;
+/**
+ * Default per-request timeout.
+ *
+ * Measured Aug 2026: most v3 endpoints answer in 0.3–2.2s, but
+ * `/subscriptions/{iccid}/location` consistently takes 7.6–7.7s. The previous
+ * 10s ceiling left that endpoint ~2s of headroom and it failed intermittently,
+ * surfacing to operators as a bare "TelliSIM request failed" on the Location
+ * panel.
+ */
+const DEFAULT_TIMEOUT_MS = 20_000;
 
 /** Network events scans event logs and routinely exceeds the default. */
 const NETWORK_EVENTS_TIMEOUT_MS = 30_000;
@@ -54,7 +62,15 @@ async function telliSIMFetch(
   } catch (err) {
     // Never let a network/parse error surface the key-bearing URL
     const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`TelliSIM request failed: ${redactKey(msg)}`);
+    const wrapped = new Error(`TelliSIM request failed: ${redactKey(msg)}`);
+    // Carry the timeout signal across the wrapper. sanitizeError branches on
+    // err.name to return a 504 "request timed out"; a plain `new Error` resets
+    // the name to "Error", making that branch unreachable and reporting every
+    // timeout as a generic failure with no hint that it was a latency problem.
+    if (err instanceof Error && err.name === "TimeoutError") {
+      wrapped.name = "TimeoutError";
+    }
+    throw wrapped;
   }
 
   if (!res.ok) {
