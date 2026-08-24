@@ -206,8 +206,13 @@ export const networkIntentEvents = sqliteTable("network_intent_events", {
   orderNumber: text("order_number"),
   customerEmail: text("customer_email"),
   detectedAt: integer("detected_at", { mode: "timestamp" }).notNull(),
+  // Null = captured locally but not yet in OpenSearch. TelliSIM drops network
+  // events after ~7 days, so a lost write is unrecoverable; SQLite acts as the
+  // replay buffer and later calls retry anything still pending.
+  osIndexedAt: integer("os_indexed_at", { mode: "timestamp" }),
 }, (t) => [
   uniqueIndex("nie_event_idx").on(t.iccid, t.countryAlpha2, t.eventTime, t.kind),
+  index("nie_pending_idx").on(t.osIndexedAt),
   index("nie_country_idx").on(t.countryAlpha2),
   index("nie_iccid_idx").on(t.iccid),
   index("nie_detected_idx").on(t.detectedAt),

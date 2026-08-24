@@ -6,7 +6,8 @@ import {
   getPlanAttachments,
   getCoverageProfile,
 } from "@/lib/tellisim-client";
-import { resolveTelliSIMCredentials } from "@/lib/server-credentials";
+import { resolveTelliSIMCredentials, resolveOpenSearchCredentials } from "@/lib/server-credentials";
+import { syncIntentToOpenSearch } from "@/lib/network-intent-store";
 import { analyzeNetworkEvents, recentWindow, resolveIso2 } from "@/lib/network-events";
 import type { NormalizedNetworkEvent } from "@/lib/network-events";
 import { db } from "@/lib/db";
@@ -158,6 +159,12 @@ export async function POST(
       }
     }
 
+    // Push to OpenSearch, the durable store — TelliSIM ages these events out
+    // after ~7 days, so anything not landed there is eventually unrecoverable.
+    // Runs whenever rows are pending, not only when this lookup found
+    // something, so a previous OpenSearch outage drains on the next call.
+    const osSync = await syncIntentToOpenSearch(resolveOpenSearchCredentials());
+
     return NextResponse.json({
       ok: true,
       period,
@@ -178,6 +185,7 @@ export async function POST(
       },
       saved,
       saveError,
+      osSync,
     });
   } catch (err) {
     return sanitizeError(err, "TelliSIM");
