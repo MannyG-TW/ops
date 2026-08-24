@@ -555,6 +555,11 @@ Returned when no subscription exists for the supplied ICCID.
 
 ### As implemented in this repo
 
+> **Implementing this elsewhere, or onboarding someone to it?** Read
+> **`docs/TELLISIM_NETWORK_INTENT_GUIDE.md`** — a self-contained build guide
+> covering the live payload quirks, the intent algorithm, the storage design,
+> a security checklist, and a verification recipe.
+
 | Piece | Location |
 |-------|----------|
 | API call | `getNetworkEvents()` — `src/lib/tellisim-client.ts` |
