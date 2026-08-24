@@ -15,11 +15,18 @@ function redactKey(s: string): string {
   return s.replace(/key=[^&\s"']+/gi, "key=***");
 }
 
+/** Default per-request timeout. Generous enough for the lookup endpoints. */
+const DEFAULT_TIMEOUT_MS = 10_000;
+
+/** Network events scans event logs and routinely exceeds the default. */
+const NETWORK_EVENTS_TIMEOUT_MS = 30_000;
+
 async function telliSIMFetch(
   creds: TelliSIMCredentials,
   path: string,
   method: string = "GET",
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
 ) {
   const cleanUrl = (creds.baseUrl || "https://api.tellisim.com").replace(/\/$/, "");
   // Validate the base URL up front: otherwise an invalid URL makes fetch throw
@@ -42,7 +49,7 @@ async function telliSIMFetch(
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     // Never let a network/parse error surface the key-bearing URL
@@ -156,9 +163,16 @@ export async function getNetworkEvents(
   start: string,
   end: string
 ) {
-  return telliSIMFetch(creds, `/v3/subscriptions/${iccid}/network-events`, "POST", {
-    period: { start, end },
-  });
+  return telliSIMFetch(
+    creds,
+    `/v3/subscriptions/${iccid}/network-events`,
+    "POST",
+    { period: { start, end } },
+    // Measured at ~10.5s for a busy 7-day window (60 attach + 279 data events),
+    // which overran the shared 10s default. This endpoint scans event logs
+    // rather than reading a record, so it is structurally slower than the rest.
+    NETWORK_EVENTS_TIMEOUT_MS
+  );
 }
 
 /**
